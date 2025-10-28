@@ -1,0 +1,376 @@
+---
+title: "Classwork 4: Model Selection & Comparison"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(caret)
+library(knitr)
+library(kableExtra)
+
+theme_set(theme_minimal(base_size = 12))
+```
+
+# Load Data
+```{r}
+# Load housing data
+housing <- read_csv('data/housing_prices.csv')
+
+# Quick exploration
+glimpse(housing)
+summary(housing)
+```
+
+---
+
+# Task 1: Fit Candidate Models
+```{r}
+# Define 5 models of increasing complexity
+
+# Model 1: Baseline (just sqft)
+model_1 <- lm(price ~ sqft, data = housing)
+
+# Model 2: Add bedrooms and bathrooms
+model_2 <- lm(price ~ ___, data = housing)
+
+# Model 3: Add age and lot_size
+model_3 <- lm(___)
+
+# Model 4: Add garage and distance
+model_4 <- lm(___)
+
+# Model 5: Full model (all predictors)
+model_5 <- lm(___)
+```
+
+## Extract Model Statistics
+```{r}
+# TODO: Create comparison table
+models <- list(model_1, model_2, model_3, model_4, model_5)
+
+comparison_table <- tibble(
+  Model = paste("Model", 1:5),
+  `N Predictors` = sapply(models, function(m) length(coef(m)) - 1),
+  `R²` = sapply(models, function(m) summary(m)$r.squared),
+  `Adj R²` = sapply(models, function(m) summary(m)$adj.r.squared),
+  AIC = sapply(models, AIC),
+  BIC = sapply(models, BIC)
+)
+
+kable(comparison_table, digits = 3,
+      caption = "Model Comparison: Basic Statistics") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Initial observations:**
+```
+TODO: What do you notice about R² vs Adjusted R² as complexity increases?
+Which model appears best based on AIC? Based on BIC?
+```
+
+---
+
+# Task 2: Nested F-Tests
+
+## Model 1 vs Model 2
+```{r}
+# TODO: F-test comparing model 1 vs model 2
+anova(model_1, model_2)
+```
+
+**Conclusion:**
+```
+TODO: Is Model 2 significantly better than Model 1?
+```
+
+## Model 2 vs Model 3
+```{r}
+# TODO: F-test
+anova(___, ___)
+```
+
+**Conclusion:**
+```
+TODO: Interpretation
+```
+
+## Model 3 vs Model 4
+```{r}
+# TODO: F-test
+```
+
+**Conclusion:**
+```
+TODO: Interpretation
+```
+
+## Model 4 vs Model 5
+```{r}
+# TODO: F-test
+```
+
+**Conclusion:**
+```
+TODO: Interpretation
+```
+
+## Summary of F-Tests
+```
+TODO: Based on nested F-tests alone, which model would you choose?
+```
+
+---
+
+# Task 3: Information Criteria Analysis
+
+## Visualize AIC and BIC
+```{r}
+# TODO: Create plot comparing AIC and BIC across models
+comparison_table %>%
+  pivot_longer(cols = c(AIC, BIC), 
+               names_to = "Criterion", 
+               values_to = "Value") %>%
+  ggplot(aes(x = Model, y = Value, fill = Criterion)) +
+  geom_col(position = "dodge") +
+  labs(title = "Model Comparison: Information Criteria",
+       subtitle = "Lower is better",
+       y = "Criterion Value") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Identify Best Models
+```{r}
+# TODO: Which model minimizes AIC?
+best_aic <- comparison_table %>% 
+  filter(AIC == min(AIC)) %>% 
+  pull(Model)
+
+# TODO: Which model minimizes BIC?
+best_bic <- ___
+
+cat("Best model by AIC:", best_aic, "\n")
+cat("Best model by BIC:", best_bic, "\n")
+```
+
+**Do they agree?**
+```
+TODO: If AIC and BIC select different models, explain why.
+(Hint: BIC penalizes complexity more heavily)
+```
+
+---
+
+# Task 4: Cross-Validation
+
+## Set Up CV
+```{r}
+# Define 10-fold CV
+train_control <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE
+)
+```
+
+## Run CV for All Models
+```{r}
+# TODO: Run CV for each model
+# Model 1
+cv_1 <- train(price ~ sqft, 
+              data = housing, 
+              method = "lm",
+              trControl = train_control)
+
+# Model 2
+cv_2 <- train(___)
+
+# Model 3-5
+cv_3 <- train(___)
+cv_4 <- train(___)
+cv_5 <- train(___)
+```
+
+## Extract CV Results
+```{r}
+# TODO: Create results table
+cv_models <- list(cv_1, cv_2, cv_3, cv_4, cv_5)
+
+cv_results <- tibble(
+  Model = paste("Model", 1:5),
+  `Mean CV RMSE` = sapply(cv_models, function(m) mean(m$resample$RMSE)),
+  `SD CV RMSE` = sapply(cv_models, function(m) sd(m$resample$RMSE)),
+  `Mean CV R²` = sapply(cv_models, function(m) mean(m$resample$Rsquared))
+)
+
+kable(cv_results, digits = 3,
+      caption = "Cross-Validation Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Visualize CV Performance
+```{r fig.height=5}
+# TODO: Create boxplot of CV RMSE across all models
+cv_rmse_data <- tibble(
+  Model = rep(paste("Model", 1:5), each = 10),
+  RMSE = unlist(lapply(cv_models, function(m) m$resample$RMSE))
+)
+
+ggplot(cv_rmse_data, aes(x = Model, y = RMSE, fill = Model)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "Cross-Validation RMSE Distribution",
+       subtitle = "10-fold CV results",
+       y = "RMSE ($K)") +
+  theme(legend.position = "none")
+```
+
+**CV insights:**
+```
+TODO: 
+- Which model has lowest mean CV RMSE?
+- Which has most stable performance (lowest SD)?
+- Any evidence of overfitting (training fit much better than CV)?
+```
+
+---
+
+# Task 5: Final Model Selection
+
+## Synthesize All Evidence
+```{r}
+# TODO: Combine all criteria in one table
+final_comparison <- comparison_table %>%
+  left_join(cv_results, by = "Model") %>%
+  mutate(
+    `Best AIC` = (Model == best_aic),
+    `Best BIC` = (Model == best_bic),
+    `Best CV` = (`Mean CV RMSE` == min(`Mean CV RMSE`))
+  )
+
+kable(final_comparison, digits = 3,
+      caption = "Complete Model Comparison") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), font_size = 11)
+```
+
+## Final Selection
+
+**My selected model:** 
+```
+TODO: State your final model choice (e.g., "Model 3")
+```
+
+**Justification:**
+```
+TODO: Write 3-4 sentences explaining:
+
+1. Why you chose this model over simpler alternatives
+2. Why you chose this model over more complex alternatives
+3. Which selection criterion was most important to you (F-tests, AIC, BIC, CV)
+4. What business or practical considerations influenced your decision
+
+Example structure:
+"I selected Model X because... While Model Y had slightly better [metric], 
+Model X provides a better balance of [trade-off]. The [criterion] was most 
+influential in my decision because... From a business perspective, this 
+model is preferable because..."
+```
+
+## Final Model Details
+```{r}
+# TODO: Display summary of your chosen model
+my_final_model <- ___  # Assign your chosen model
+
+summary(my_final_model)
+```
+
+---
+
+# Bias-Variance Considerations
+
+**High bias (underfitting) concerns:**
+```
+TODO: Is your model too simple? What patterns might it be missing?
+```
+
+**High variance (overfitting) concerns:**
+```
+TODO: Is your model too complex? Are you fitting noise?
+```
+
+**The sweet spot:**
+```
+TODO: Why does your chosen model balance bias and variance well?
+```
+
+---
+
+# Bonus Challenge 1: Train/Test Split Check (Optional)
+```{r eval=FALSE}
+# TODO: Split data 70/30
+set.seed(42)
+train_idx <- sample(1:nrow(housing), 0.7 * nrow(housing))
+
+train_data <- housing[train_idx, ]
+test_data <- housing[-train_idx, ]
+
+# Fit all models on training data and evaluate on both train and test
+# Compare training RMSE vs test RMSE - large gap = overfitting
+```
+
+---
+
+# Bonus Challenge 2: Interaction Testing (Optional)
+```{r eval=FALSE}
+# TODO: Test interaction between sqft and bedrooms
+model_interaction <- lm(price ~ sqft * bedrooms + bathrooms + age + 
+                          lot_size + garage_spaces + distance_downtown + 
+                          school_rating, 
+                        data = housing)
+
+# Compare to model without interaction
+anova(model_5, model_interaction)
+
+# Is interaction significant? Does it improve CV performance?
+```
+
+---
+
+# Bonus Challenge 3: Polynomial Features (Optional)
+```{r eval=FALSE}
+# TODO: Try adding sqft^2
+model_poly <- lm(price ~ poly(sqft, 2, raw = TRUE) + bedrooms + bathrooms + 
+                   age + lot_size + garage_spaces + distance_downtown + 
+                   school_rating,
+                 data = housing)
+
+# Does quadratic term improve fit?
+# Run CV to check if it overfits
+```
+
+---
+
+# Discussion Questions
+
+**Question 1: AIC vs BIC**
+```
+TODO: If AIC and BIC disagree, which would you trust and why?
+Consider: sample size, goal (prediction vs explanation), consequences of complexity
+```
+
+**Question 2: Simpler Sometimes Better**
+```
+TODO: When might you choose a simpler model even if complex model has 
+better CV performance? Consider: interpretability, deployment cost, 
+regulatory requirements, stakeholder trust
+```
+
+**Question 3: Sample Size Effects**
+```
+TODO: How would your model selection process change with n=10,000 instead of n=300?
+Consider: CV cost, statistical power, overfitting risk, AIC/BIC behavior
+```

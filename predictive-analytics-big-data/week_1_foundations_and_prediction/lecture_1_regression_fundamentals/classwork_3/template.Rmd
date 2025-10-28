@@ -1,0 +1,292 @@
+---
+title: "Classwork 3: Advanced Interpretation"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(car)
+library(lm.beta)
+library(gridExtra)
+
+theme_set(theme_minimal(base_size = 12))
+course_colors <- c('#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A994E', '#BC4B51')
+```
+
+# Load Data and Fit Model
+```{r}
+# Load store performance data
+store_data <- read_csv('data/store_performance.csv')
+
+# Fit full model
+model_full <- lm(profit ~ foot_traffic + employee_training_hours + 
+                   local_income + store_age + parking_spaces, 
+                 data = store_data)
+
+summary(model_full)
+```
+
+---
+
+# Task 1: Partial Regression Plots
+
+## Method 1: Manual Calculation (Foot Traffic)
+```{r}
+# TODO: Create partial regression plot for foot_traffic
+
+# Step 1: Regress profit on all predictors EXCEPT foot_traffic
+model_no_traffic <- lm(___ ~ ___, data = store_data)
+resid_profit <- residuals(___)
+
+# Step 2: Regress foot_traffic on all other predictors
+model_traffic_on_others <- lm(___ ~ ___, data = store_data)
+resid_traffic <- residuals(___)
+
+# Step 3: Plot
+tibble(resid_traffic = resid_traffic,
+       resid_profit = resid_profit) %>%
+  ggplot(aes(x = resid_traffic, y = resid_profit)) +
+  geom_point(alpha = 0.6, color = course_colors[1]) +
+  geom_smooth(method = "lm", se = TRUE, color = course_colors[3]) +
+  labs(title = "Partial Regression: Foot Traffic",
+       x = "Foot Traffic (residualized)",
+       y = "Profit (residualized)")
+
+# Verify slope matches coefficient
+cat("Partial regression slope:", coef(lm(resid_profit ~ resid_traffic))[2], "\n")
+cat("Full model coefficient:", coef(model_full)["foot_traffic"], "\n")
+```
+
+**Interpretation:**
+```
+TODO: One sentence explaining what this plot shows
+```
+
+## Method 2: Using avPlots() for All Predictors
+```{r fig.height=6}
+# TODO: Use car::avPlots() to generate all partial regression plots at once
+avPlots(___)
+```
+
+**Strongest relationship:**
+```
+TODO: Which predictor shows the steepest slope in its partial regression plot?
+```
+
+---
+
+# Task 2: Standardized Coefficients
+```{r}
+# TODO: Calculate standardized coefficients
+standardized_coefs <- lm.beta(___)
+
+# Create comparison table
+comparison <- tibble(
+  Predictor = names(coef(model_full))[-1],
+  Raw_Coefficient = coef(model_full)[-1],
+  Standardized_Beta = standardized_coefs$standardized.coefficients[-1]
+) %>%
+  arrange(desc(abs(Standardized_Beta)))
+
+kable(comparison, digits = 3, 
+      caption = "Raw vs. Standardized Coefficients")
+```
+
+## Visualization
+```{r}
+# TODO: Create bar chart of standardized coefficients
+comparison %>%
+  ggplot(aes(x = reorder(Predictor, Standardized_Beta),
+             y = Standardized_Beta,
+             fill = Standardized_Beta > 0)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Standardized Effect Sizes",
+       x = NULL, y = "Standardized Coefficient (β*)") +
+  theme(legend.position = "none")
+```
+
+**Ranking changes?**
+```
+TODO: Compare ranking by raw vs. standardized coefficients. 
+Does the order change? Why or why not?
+```
+
+---
+
+# Task 3: Effect Size Classification
+```{r}
+# TODO: Classify effect sizes
+comparison <- comparison %>%
+  mutate(
+    Effect_Size_Category = case_when(
+      abs(Standardized_Beta) < 0.3 ~ "Small",
+      abs(Standardized_Beta) < 0.5 ~ "Medium",
+      TRUE ~ "Large"
+    )
+  )
+
+kable(comparison, digits = 3)
+```
+
+## Statistical Significance Check
+```{r}
+# TODO: Extract p-values and combine with effect sizes
+p_values <- summary(model_full)$coefficients[-1, "Pr(>|t|)"]
+
+comparison$P_Value <- p_values
+
+# Flag: significant but small effect
+comparison <- comparison %>%
+  mutate(
+    Significant = P_Value < 0.05,
+    Significant_But_Small = Significant & Effect_Size_Category == "Small"
+  )
+
+kable(comparison %>% select(Predictor, Standardized_Beta, P_Value, 
+                            Effect_Size_Category, Significant_But_Small),
+      digits = 3)
+```
+
+**Interpretation for VP:**
+```
+TODO: Are any predictors statistically significant but have small 
+practical effects? What should the VP do about these?
+```
+
+---
+
+# Task 4: Prediction Scenarios
+```{r}
+# Define new store characteristics
+new_store <- data.frame(
+  foot_traffic = 500,
+  employee_training_hours = 40,
+  local_income = 75,
+  store_age = 5,
+  parking_spaces = 50
+)
+
+# TODO: Point prediction
+point_pred <- predict(___, newdata = ___)
+
+# TODO: Confidence interval (mean response)
+conf_int <- predict(___, newdata = ___, 
+                    interval = "confidence", level = 0.95)
+
+# TODO: Prediction interval (individual response)
+pred_int <- predict(___, newdata = ___, 
+                    interval = "prediction", level = 0.95)
+
+# Display results
+cat("Point Prediction: $", round(point_pred, 1), "K\n\n", sep = "")
+
+cat("95% Confidence Interval (mean profit):\n")
+cat("  [", round(conf_int[, "lwr"], 1), ", ", 
+    round(conf_int[, "upr"], 1), "]K\n\n", sep = "")
+
+cat("95% Prediction Interval (this specific store):\n")
+cat("  [", round(pred_int[, "lwr"], 1), ", ", 
+    round(pred_int[, "upr"], 1), "]K\n", sep = "")
+```
+
+**Which interval to report?**
+```
+TODO: The VP wants to know expected profit for this new store.
+Should you report the confidence or prediction interval? Why?
+```
+
+---
+
+# Task 5: Executive Memo
+```
+TO: VP Martinez
+FROM: [Your Name], Data Analytics
+RE: Store Profit Drivers - Key Findings
+
+VP Martinez,
+
+Based on your request to understand profit drivers, here's what the data shows:
+
+TODO: Write 3-4 sentences including:
+1. Which 1-2 factors have the largest effects (mention standardized betas)
+2. One specific, actionable recommendation
+3. Uncertainty/confidence statement about predictions
+
+[Your analysis here]
+```
+
+---
+
+# Bonus Challenge 1: Importance Plot
+```{r eval=FALSE}
+# TODO: Create plot showing standardized coefficients with confidence intervals
+
+# Extract confidence intervals for raw coefficients
+conf_intervals <- confint(model_full)[-1, ]
+
+# Convert to standardized scale (approximate)
+# TODO: Calculate standardized CIs
+
+# Plot
+```
+
+---
+
+# Bonus Challenge 2: Impact Calculation
+```{r eval=FALSE}
+# TODO: Calculate profit increase from 1 SD improvement in top predictor
+
+top_predictor <- "___"  # Fill in
+top_beta_star <- ___
+
+# 1 SD in profit units
+sd_profit <- sd(store_data$profit)
+
+# Expected increase
+expected_increase <- ___
+
+cat(sprintf("Improving %s by 1 SD increases profit by $%.1fK\n",
+            top_predictor, expected_increase))
+```
+
+---
+
+# Bonus Challenge 3: Interaction Test
+```{r eval=FALSE}
+# TODO: Test if training effect varies by store age
+
+model_interaction <- lm(profit ~ foot_traffic + employee_training_hours * store_age +
+                          local_income + parking_spaces,
+                        data = store_data)
+
+summary(model_interaction)
+
+# Is the interaction significant?
+# Plot the interaction if significant
+```
+
+---
+
+# Discussion Questions
+
+**Question 1:**
+```
+TODO: Why might a variable be statistically significant but practically unimportant?
+```
+
+**Question 2:**
+```
+TODO: When would you prefer raw coefficients over standardized?
+```
+
+**Question 3:**
+```
+TODO: How would you explain prediction intervals to VP Martinez?
+Use plain language, no jargon.
+```

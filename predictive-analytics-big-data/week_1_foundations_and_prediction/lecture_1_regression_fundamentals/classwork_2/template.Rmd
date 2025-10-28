@@ -1,0 +1,269 @@
+---
+title: "Classwork 2: Multiple Regression Model Building"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(knitr)
+
+# Load marketing data from Lecture 1
+# (Students should have this from earlier)
+set.seed(123)
+n <- 100
+marketing_data <- tibble(
+  week = 1:n,
+  google_spend = runif(n, 5, 50),
+  facebook_spend = runif(n, 5, 40),
+  email_spend = runif(n, 2, 20)
+) %>%
+  mutate(
+    sales = 50 + 2.5 * google_spend + 1.8 * facebook_spend + 
+            0.9 * email_spend + rnorm(n, 0, 15),
+    across(everything(), ~round(., 1))
+  )
+```
+
+# Task 1: Fit Multiple Regression Model
+```{r}
+# TODO: Fit the model
+model_full <- lm(___ ~ ___ + ___ + ___, data = marketing_data)
+
+# View summary
+summary(model_full)
+```
+
+## Extract Key Metrics
+```{r}
+# TODO: Extract coefficients
+coefficients <- ___
+
+# TODO: Extract R-squared
+r_squared <- ___
+
+# TODO: Extract residual standard error
+rse <- ___
+
+cat(sprintf("R-squared: %.3f\n", r_squared))
+cat(sprintf("Residual Std Error: %.2f\n", rse))
+```
+
+## Initial Observations
+
+**Which channel has highest return per dollar?**
+```
+TODO: Answer based on coefficients
+```
+
+---
+
+# Task 2: Coefficient Interpretation
+
+## Google Spend Coefficient
+```
+TODO: Write interpretation using "holding constant" phrase
+```
+
+## Facebook Spend Coefficient
+```
+TODO: Write interpretation using "holding constant" phrase
+```
+
+## Email Spend Coefficient
+```
+TODO: Write interpretation using "holding constant" phrase
+```
+
+---
+
+# Task 3: Budget Scenario Analysis
+```{r}
+# Create scenarios
+scenarios <- data.frame(
+  scenario = c("Current Baseline", "Google Heavy", "Facebook Heavy", 
+               "Email Heavy", "My Optimal"),
+  google_spend = c(30, 50, 20, 20, ___),  # TODO: Fill in your optimal
+  facebook_spend = c(25, 20, 50, 20, ___),
+  email_spend = c(15, 10, 10, 40, ___)
+)
+
+# TODO: Add total spend column
+scenarios$total_spend <- ___
+
+# TODO: Predict sales for each scenario
+scenarios$predicted_sales <- predict(___, newdata = ___)
+
+# TODO: Calculate expected ROI (return - cost) / cost
+scenarios$roi <- ___
+
+# Display results
+kable(scenarios, digits = 1, 
+      caption = "Budget Scenario Comparison")
+```
+
+## Visualization
+```{r}
+# TODO: Create bar chart comparing scenarios
+ggplot(scenarios, aes(x = scenario, y = predicted_sales, fill = scenario)) +
+  geom_col() +
+  labs(title = "Predicted Sales by Budget Scenario",
+       x = NULL, y = "Predicted Sales ($K)") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+---
+
+# Task 4: Business Recommendation
+
+## Scenario Performance
+
+**Best for absolute sales:**
+```
+TODO: Which scenario maximizes sales?
+```
+
+**Best for ROI:**
+```
+TODO: Which scenario maximizes return per dollar?
+```
+
+## Executive Summary
+```
+TODO: Write 3-4 sentence recommendation to the CMO
+
+Example structure:
+- State the recommendation clearly
+- Provide the key numbers (expected sales, ROI)
+- Mention the confidence level
+- Note any important caveats
+```
+
+## Prediction Interval
+```{r}
+# TODO: Get prediction interval for your recommended scenario
+# Use the scenario you're recommending
+recommended_scenario <- data.frame(
+  google_spend = ___,
+  facebook_spend = ___,
+  email_spend = ___
+)
+
+prediction_with_interval <- predict(model_full, 
+                                    newdata = recommended_scenario,
+                                    interval = "prediction", 
+                                    level = 0.95)
+
+prediction_with_interval
+```
+
+**Communication to CMO:**
+```
+TODO: Explain what this interval means in business terms
+"We predict sales will be $XXK, with 95% confidence that actual sales 
+will fall between $YYK and $ZZK."
+```
+
+---
+
+# Task 5: Model Limitations
+
+**Factors affecting sales that are NOT in this model:**
+
+1. 
+2. 
+3. 
+4. 
+5. 
+
+**Impact on our recommendation:**
+```
+TODO: Explain how these missing factors might affect the validity 
+of your recommendation. Should the CMO be cautious? What additional 
+analysis would you recommend?
+```
+
+---
+
+# Bonus Challenge 1: Interaction Effects (Optional)
+```{r eval=FALSE}
+# TODO: Fit model with interaction between Google and Facebook
+model_interaction <- lm(sales ~ google_spend * facebook_spend + email_spend,
+                       data = marketing_data)
+
+summary(model_interaction)
+
+# Compare to original model
+# Does interaction improve fit?
+# How would you interpret the interaction term?
+```
+
+---
+
+# Bonus Challenge 2: Sensitivity Analysis (Optional)
+```{r eval=FALSE}
+# TODO: How much would Google coefficient need to change 
+# to alter your recommendation?
+
+# Current Google coefficient:
+current_google_coef <- coef(model_full)["google_spend"]
+
+# Refit model with different scenarios
+# Plot how recommendations change as coefficients vary
+```
+
+---
+
+# Discussion Questions
+
+## Question 1: Model Trust
+
+**Would you trust this model to make a $1M budget decision? Why or why not?**
+```
+TODO: Your answer here. Consider:
+- Sample size
+- R-squared value
+- Missing variables
+- Assumptions (we'll check these next)
+```
+
+## Question 2: Validation
+
+**How would you validate this model before presenting to executives?**
+```
+TODO: List validation approaches:
+- Train/test split?
+- Cross-validation?
+- Out-of-sample testing?
+- Compare to historical performance?
+```
+
+## Question 3: Additional Data
+
+**What additional data would you want to collect?**
+```
+TODO: List variables and explain why they'd be valuable
+```
+
+---
+
+# Summary
+
+**Key insights from this analysis:**
+
+1. 
+2. 
+3. 
+
+**Next steps:**
+
+1. 
+2. 
+3.

@@ -1,0 +1,401 @@
+---
+title: "Homework 1: Complete Regression Analysis"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 5
+)
+
+# Load required libraries
+library(tidyverse)
+library(car)
+library(knitr)
+library(kableExtra)
+
+# Set theme
+theme_set(theme_minimal(base_size = 12))
+```
+
+# 1. Exploratory Data Analysis
+
+## 1.1 Load Data
+```{r}
+# Load the dataset
+retail_data <- read_csv('data/retail_sales_messy.csv')
+
+# Display structure
+str(retail_data)
+```
+
+## 1.2 Summary Statistics
+```{r}
+# TODO: Generate summary statistics for all variables
+summary(retail_data)
+```
+
+## 1.3 Check for Missing Values
+```{r}
+# TODO: Check for missing values
+colSums(is.na(retail_data))
+```
+
+## 1.4 Visualize Distributions
+```{r}
+# TODO: Create histograms for continuous variables
+```
+```{r}
+# TODO: Create boxplots by region
+```
+
+## 1.5 Scatterplots
+```{r}
+# TODO: Create scatterplots: sales vs. each predictor
+```
+
+## 1.6 Preliminary Observations
+```
+TODO: Write 3-5 sentences about what you observe:
+- Which variables appear related to sales?
+- Any obvious outliers?
+- Any non-linear relationships?
+- Any concerning patterns?
+```
+
+---
+
+# 2. Initial Model Building
+
+## 2.1 Fit Multiple Regression
+```{r}
+# TODO: Fit model with all predictors
+model_initial <- lm(___ ~ ___, data = retail_data)
+
+summary(model_initial)
+```
+
+## 2.2 Coefficient Interpretation
+
+**Advertising Spend:**
+```
+TODO: Interpret this coefficient using "holding constant" language
+```
+
+**Store Size:**
+```
+TODO: Interpret
+```
+
+**Competitor Distance:**
+```
+TODO: Interpret
+```
+
+**Staff Count:**
+```
+TODO: Interpret
+```
+
+**Region:**
+```
+TODO: Interpret the region coefficients
+```
+
+## 2.3 Model Fit
+```{r}
+# Extract R-squared
+r_squared <- summary(model_initial)$r.squared
+cat(sprintf("R-squared: %.3f\n", r_squared))
+```
+
+**Interpretation:**
+```
+TODO: What does this R-squared value mean for the business?
+```
+
+## 2.4 Sample Predictions
+```{r}
+# TODO: Create 3 sample scenarios and predict sales
+scenarios <- data.frame(
+  advertising_spend = c(10, 20, 30),
+  store_size = c(5000, 7500, 10000),
+  competitor_distance = c(2, 5, 10),
+  staff_count = c(10, 15, 20),
+  region = c("North", "South", "East")
+)
+
+predictions <- predict(model_initial, newdata = scenarios)
+scenarios$predicted_sales <- predictions
+
+kable(scenarios, caption = "Sample Predictions")
+```
+
+---
+
+# 3. Model Diagnostics
+
+## 3.1 Visual Diagnostic Plots
+```{r fig.height=7}
+# TODO: Generate all four diagnostic plots
+par(mfrow = c(2, 2))
+plot(model_initial)
+par(mfrow = c(1, 1))
+```
+
+## 3.2 Linearity Check
+```{r}
+# TODO: Residuals vs fitted plot with interpretation
+```
+
+**Assessment:**
+```
+TODO: Is linearity assumption met? Any patterns observed?
+```
+
+## 3.3 Independence Check
+```{r}
+# TODO: Durbin-Watson test
+durbinWatsonTest(model_initial)
+```
+
+**Assessment:**
+```
+TODO: Is independence assumption met?
+```
+
+## 3.4 Normality Check
+```{r}
+# TODO: Q-Q plot analysis
+```
+
+**Assessment:**
+```
+TODO: Are residuals approximately normal?
+```
+
+## 3.5 Homoscedasticity Check
+```{r}
+# TODO: Scale-location plot analysis
+```
+
+**Assessment:**
+```
+TODO: Is variance constant across fitted values?
+```
+
+## 3.6 Multicollinearity Check
+```{r}
+# TODO: Calculate VIF
+vif(model_initial)
+```
+
+**Assessment:**
+```
+TODO: Any multicollinearity concerns? Which variables?
+```
+
+## 3.7 Outlier Detection
+```{r}
+# TODO: Identify outliers using standardized residuals
+std_resid <- rstandard(model_initial)
+outliers <- which(abs(std_resid) > 2.5)
+
+cat("Potential outliers:", outliers, "\n")
+```
+
+## 3.8 Leverage Analysis
+```{r}
+# TODO: Calculate and plot hat values
+hat_vals <- hatvalues(model_initial)
+threshold <- 2 * (length(coef(model_initial)) / nrow(retail_data))
+
+high_leverage <- which(hat_vals > threshold)
+cat("High leverage points:", high_leverage, "\n")
+```
+
+## 3.9 Influence Analysis
+```{r}
+# TODO: Calculate and plot Cook's distance
+cooks_d <- cooks.distance(model_initial)
+influential <- which(cooks_d > 4/nrow(retail_data))
+
+cat("Influential points:", influential, "\n")
+```
+
+## 3.10 Summary of Violations
+```
+TODO: List all assumption violations found:
+
+1. 
+2. 
+3. 
+
+Each violation needs to be addressed in the next section.
+```
+
+---
+
+# 4. Remedial Measures
+
+## 4.1 Addressing [Violation 1]
+
+**Problem:**
+```
+TODO: Describe the violation
+```
+
+**Proposed Solution:**
+```
+TODO: What will you do to fix it?
+```
+
+**Implementation:**
+```{r}
+# TODO: Implement your fix (transformation, removal, etc.)
+```
+
+**Verification:**
+```{r}
+# TODO: Show that the problem is resolved
+```
+
+## 4.2 Addressing [Violation 2]
+
+[Repeat structure for each violation]
+
+## 4.3 Refitted Model
+```{r}
+# TODO: Fit your improved model
+model_final <- lm(___ ~ ___, data = ___)
+
+summary(model_final)
+```
+
+## 4.4 Diagnostics on Final Model
+```{r fig.height=7}
+# TODO: Re-run all diagnostics on final model
+par(mfrow = c(2, 2))
+plot(model_final)
+par(mfrow = c(1, 1))
+```
+
+**Assessment:**
+```
+TODO: Confirm that violations have been resolved
+```
+
+---
+
+# 5. Model Validation
+
+## 5.1 Train-Test Split
+```{r}
+# TODO: Create 80/20 split
+set.seed(42)
+train_indices <- sample(1:nrow(retail_data), 0.8 * nrow(retail_data))
+
+train_data <- retail_data[train_indices, ]
+test_data <- retail_data[-train_indices, ]
+
+cat(sprintf("Training set: %d observations\n", nrow(train_data)))
+cat(sprintf("Test set: %d observations\n", nrow(test_data)))
+```
+
+## 5.2 Fit on Training Data
+```{r}
+# TODO: Fit model on training data only
+model_train <- lm(___ ~ ___, data = train_data)
+
+summary(model_train)
+```
+
+## 5.3 Predict on Test Data
+```{r}
+# TODO: Generate predictions for test set
+test_predictions <- predict(model_train, newdata = test_data)
+
+# Calculate test RMSE
+test_rmse <- sqrt(mean((test_data$sales - test_predictions)^2))
+
+# Calculate test R-squared
+test_r_squared <- 1 - sum((test_data$sales - test_predictions)^2) / 
+                      sum((test_data$sales - mean(test_data$sales))^2)
+
+cat(sprintf("Test RMSE: %.2f\n", test_rmse))
+cat(sprintf("Test R-squared: %.3f\n", test_r_squared))
+```
+
+## 5.4 Compare Training vs Test Performance
+```{r}
+# Training performance
+train_rmse <- sqrt(mean(residuals(model_train)^2))
+train_r_squared <- summary(model_train)$r.squared
+
+comparison <- data.frame(
+  Metric = c("RMSE", "R-squared"),
+  Training = c(train_rmse, train_r_squared),
+  Test = c(test_rmse, test_r_squared)
+)
+
+kable(comparison, digits = 3, 
+      caption = "Training vs Test Performance")
+```
+
+**Assessment:**
+```
+TODO: Is the model overfitting? Why or why not?
+How confident are we in generalization to new data?
+```
+
+---
+
+# 6. Final Recommendations
+
+## Model Coefficients
+```{r}
+# TODO: Present final model coefficients with confidence intervals
+confint(model_final)
+```
+
+## Key Findings
+```
+TODO: Summarize the most important findings:
+1. Which variables have the strongest impact on sales?
+2. What is the expected impact of specific changes?
+3. How confident are we in these estimates?
+```
+
+## Business Implications
+```
+TODO: Translate statistical findings to business actions:
+- What should the company do differently?
+- What investments are justified?
+- What additional data should be collected?
+```
+
+## Limitations
+```
+TODO: Be honest about model limitations:
+- What factors are not captured?
+- Where is the model least reliable?
+- What assumptions are we making?
+```
+
+---
+
+# Appendix: Session Info
+```{r}
+sessionInfo()
+```

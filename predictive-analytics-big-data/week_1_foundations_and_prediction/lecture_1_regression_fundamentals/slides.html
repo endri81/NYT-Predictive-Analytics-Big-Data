@@ -1,0 +1,3533 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Regression Fundamentals</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="MSc in Data Science and Business Analytics" />
+    <meta name="date" content="2025-11-07" />
+    <script src="libs/header-attrs-2.29/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link href="libs/remark-css-0.0.1/default-fonts.css" rel="stylesheet" />
+    <script src="libs/kePrint-0.0.1/kePrint.js"></script>
+    <link href="libs/lightable-0.0.1/lightable.css" rel="stylesheet" />
+    <link rel="stylesheet" href="custom.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+.title[
+# Regression Fundamentals
+]
+.subtitle[
+## Predictive Analytics &amp; Big Data | Lecture 1
+]
+.author[
+### MSc in Data Science and Business Analytics
+]
+.date[
+### November 7, 2025
+]
+
+---
+
+
+
+---
+class: inverse, center, middle
+
+# Lecture 1
+# Regression Fundamentals
+
+### "The best way to predict the future is to understand the patterns of the past."
+— Nate Silver
+
+---
+
+# Course Roadmap
+
+.pull-left[
+**Week 1: Foundations**
+- **Lecture 1: Regression** ← *You are here*
+- Lecture 2: Classification
+- Lecture 3: Advanced Regression
+
+**Week 2: Advanced Models**
+- Lecture 4: Clustering
+- Lecture 5: Recommendation Systems
+- Lecture 6: Text Analytics
+]
+
+.pull-right[
+**Week 3: Neural Networks**
+- Lecture 7: NN Fundamentals
+- Lecture 8: Deep Learning
+- Lecture 9: Deployment &amp; Ethics
+
+**Three Portfolio Projects**
+1. Sales Optimization
+2. Customer Segmentation
+3. Integrated System
+]
+
+---
+
+# Today's Learning Objectives
+
+By the end of this lecture, you will:
+
+1. Articulate the business value of regression for decisions
+
+2. Explain linear regression intuition (without just formulas)
+
+3. Implement gradient descent from first principles
+
+4. Build and interpret regression models in R
+
+5. Diagnose assumption violations
+
+6. Communicate results to stakeholders
+
+---
+class: center, middle
+
+# Part 1: Why Regression Matters
+
+---
+
+# The Business Problem
+
+**Your CMO's Question:**
+
+*"We spent $2.5M on marketing last quarter across Google Ads, Facebook, and Email."*
+
+*"Which channels actually drove sales?"*
+
+*"Should we increase budget for Q4? Which channels?"*
+
+**You have data. She needs an answer by Friday.**
+
+---
+
+# Q3 Marketing Spend
+&lt;img src="slides_files/figure-html/unnamed-chunk-1-1.png" style="display: block; margin: auto;" /&gt;
+
+**Which channels should we prioritize?**
+
+---
+
+# What Decision Are We Making?
+
+### Regression enables decisions.
+
+**The Decision:** Invest additional $100K in Google Ads or Facebook?
+
+**Stakes:** Right choice → 3-5x ROI. Wrong choice → wasted budget.
+
+**Action:** Reallocate Q4 marketing budget based on predicted ROI.
+
+---
+
+# The Decision Framework
+
+Every model serves a decision:
+
+1. What decision are we making?
+
+2. What's the cost of being wrong?
+
+3. What action will we take?
+
+4. How confident must we be?
+
+.center[**If you can't articulate the decision, stop modeling.**]
+
+---
+
+# The Data We Have
+&lt;table class="table table-striped table-hover" style="font-size: 14px; margin-left: auto; margin-right: auto;"&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:right;"&gt; Week &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Google ($K) &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Facebook ($K) &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Email ($K) &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Sales ($K) &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 17.9 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 26.0 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 6.3 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 159.1 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 2 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 40.5 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 16.6 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 19.3 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 210.1 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 3 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 23.4 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 22.1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 12.8 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 164.8 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 4 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 44.7 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 38.4 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 11.3 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 226.0 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 5 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 47.3 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 21.9 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 9.2 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 214.3 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 6 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 7.1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 36.2 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 17.8 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 144.6 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 7 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 28.8 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 37.0 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 8.6 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 204.7 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 8 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 45.2 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 26.3 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 7.2 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 211.1 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+100 weeks of marketing spend and sales data.
+
+---
+
+# Visualizing the Relationship
+&lt;img src="slides_files/figure-html/unnamed-chunk-3-1.png" style="display: block; margin: auto;" /&gt;
+
+All show positive relationships. **Slopes differ** = different ROI.
+
+---
+
+# From Laptop to Planet Scale
+
+.pull-left[
+**Today: Your Laptop**
+- 100 weeks of data
+- 3 marketing channels  
+- ~400 data points
+- Runs in milliseconds
+- **Tool:** R with `lm()`
+]
+
+.pull-right[
+**Tomorrow: Industry**
+- 10 billion transactions
+- 500+ features
+- Distributed servers
+- Real-time updates
+- **Tool:** Spark MLlib
+]
+
+**The mathematics is identical. The architecture differs.**
+
+---
+class: center, middle
+
+# Part 2: The Intuition
+
+---
+
+# Finding the "Best" Line
+&lt;img src="slides_files/figure-html/unnamed-chunk-4-1.png" style="display: block; margin: auto;" /&gt;
+
+**How do we define "best"?**
+
+---
+
+# Measuring Prediction Error
+&lt;img src="slides_files/figure-html/unnamed-chunk-5-1.png" style="display: block; margin: auto;" /&gt;
+
+**Residual** = `\(y_i - \hat{y}_i\)` (vertical distance)
+
+---
+
+# Why Squared Errors?
+
+**Naive approach:** Add up errors?
+
+`$$\sum (y_i - \hat{y}_i)$$`
+
+**Problem:** Positive and negative errors cancel!
+
+- Point 1: +10, Point 2: -10, Sum = 0 😞
+
+---
+
+# The Solution: Square the Errors
+
+We use **squared errors** because:
+
+1. Always positive ✓
+
+2. Penalizes large errors more ✓  
+
+3. Mathematically tractable (calculus works) ✓
+
+`$$\text{Loss} = \sum_{i=1}^{n} (y_i - \hat{y}_i)^2$$`
+
+---
+
+# The Loss Function
+
+Formalize our "badness" measure:
+
+`$$L(\beta_0, \beta_1) = \sum_{i=1}^{n} (y_i - \hat{y}_i)^2$$`
+
+Where `\(\hat{y}_i = \beta_0 + \beta_1 x_i\)`
+
+- `\(\beta_0\)` = intercept (baseline sales)
+- `\(\beta_1\)` = slope (incremental sales per $1 spend)
+
+**Goal:** Find `\(\beta_0, \beta_1\)` that minimize `\(L\)`
+
+---
+
+# Business Reality Check
+
+**What we're optimizing:**
+
+Prediction error (squared)
+
+**What business might care about:**
+
+- Asymmetric costs (overestimating ≠ underestimating)
+- High-value vs. low-value customers
+- Strategic vs. tactical decisions
+
+**Key insight:** The math serves the business.
+
+Always ask: *"Am I optimizing the right thing?"*
+
+---
+class: center, middle
+
+# Part 3: Gradient Descent
+
+---
+
+# The Loss Surface
+&lt;img src="slides_files/figure-html/unnamed-chunk-6-1.png" style="display: block; margin: auto;" /&gt;
+
+Each point = different parameters. Color = loss.
+
+---
+
+# Gradient Descent Algorithm
+
+**Conceptual steps:**
+
+1. Start at random spot on surface
+
+2. Look around: which direction is downhill?
+
+3. Take a step in that direction
+
+4. Repeat until you reach the bottom
+
+**The "direction" = gradient** (multidimensional slope)
+
+---
+
+# Convergence Visualization
+&lt;img src="slides_files/figure-html/unnamed-chunk-7-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Computing the Gradient
+
+The gradient shows **direction** and **steepness**:
+
+`$$\nabla L = \left[ \frac{\partial L}{\partial \beta_0}, \frac{\partial L}{\partial \beta_1} \right]$$`
+
+**Intuition:** Gradient points uphill. We go downhill (negative gradient).
+
+*Don't panic about calculus—R computes this automatically.*
+
+---
+
+# Gradient Descent Pseudocode
+```
+1. Initialize β₀, β₁ randomly
+
+2. Choose learning rate α (e.g., 0.01)
+
+3. Repeat until convergence:
+   
+   a. Compute predictions: ŷᵢ = β₀ + β₁·xᵢ
+   
+   b. Compute errors: eᵢ = yᵢ - ŷᵢ  
+   
+   c. Compute gradients
+   
+   d. Update: β = β - α·gradient
+   
+   e. Check if loss decreased
+```
+
+---
+
+# The Learning Rate
+
+**Learning rate α controls step size:**
+
+- **Too large:** Overshoot, bounce around
+
+- **Too small:** Slow convergence
+
+- **Just right:** Efficient convergence (Goldilocks zone)
+
+---
+
+# Big Data Connection
+
+.pull-left[
+**Your Laptop:**
+```r
+loss &lt;- sum((y - y_pred)^2)
+gradient &lt;- compute_gradient(X, y)
+beta &lt;- beta - lr * gradient
+```
+]
+
+.pull-right[
+**Production Scale:**
+
+Data split across 1000 servers:
+- Each computes gradient on its chunk
+- Gradients aggregated
+- Parameters updated, broadcast back
+
+**Frameworks:** Spark MLlib, Horovod
+]
+
+**Same math. Different infrastructure.**
+
+---
+
+# Implementing Gradient Descent
+
+``` r
+gradient_descent &lt;- function(X, y, learning_rate = 0.01, n_iterations = 1000) {
+  
+  n_features &lt;- ncol(X)
+  beta &lt;- rnorm(n_features, 0, 0.1)  # Initialize randomly
+  loss_history &lt;- numeric(n_iterations)
+  
+  for (iter in 1:n_iterations) {
+    y_pred &lt;- X %*% beta                          # Predictions
+    errors &lt;- y - y_pred                          # Errors
+    gradient &lt;- -2 * t(X) %*% errors / length(y)  # Gradient
+    beta &lt;- beta - learning_rate * gradient       # Update
+    loss_history[iter] &lt;- sum(errors^2)           # Record loss
+  }
+  
+  return(list(beta = beta, loss_history = loss_history))
+}
+```
+
+---
+
+# Running Gradient Descent
+
+``` r
+# Prepare data
+X &lt;- cbind(1, marketing_data$google_spend)  # Add intercept
+y &lt;- marketing_data$sales
+
+# Run gradient descent
+set.seed(42)
+gd_result &lt;- gradient_descent(X, y, learning_rate = 0.0001, n_iterations = 500)
+
+# Extract parameters
+beta_0 &lt;- gd_result$beta[1]
+beta_1 &lt;- gd_result$beta[2]
+
+cat(sprintf("Intercept (β₀): %.2f\n", beta_0))
+```
+
+```
+## Intercept (β₀): 2.17
+```
+
+``` r
+cat(sprintf("Slope (β₁): %.2f\n", beta_1))
+```
+
+```
+## Slope (β₁): 5.44
+```
+
+---
+
+# Loss Decreasing Over Time
+&lt;img src="slides_files/figure-html/unnamed-chunk-10-1.png" style="display: block; margin: auto;" /&gt;
+
+Gradient descent finds the optimal parameters!
+
+---
+
+# The Fitted Line
+&lt;img src="slides_files/figure-html/unnamed-chunk-11-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Interpreting Results
+
+**Parameters:**
+- Intercept: $2.17K (baseline sales with zero spend)
+- Slope: $5.44K per $1K spend
+
+**Business translation:**
+
+Every additional $1K in Google Ads generates $5.44K in sales.
+
+**ROI:** 444%
+
+---
+
+# Decision Time
+
+**CMO's question:** Increase Google Ads by $100K?
+
+**Our answer:**
+
+Expected incremental sales: $100K × 5.44 = $544K
+
+Net gain: $444K
+
+**Recommendation:** Yes, with 95% confidence (pending validation).
+
+---
+class: inverse, center, middle
+
+# 🎯 CLASSWORK TIME
+
+## Implement Gradient Descent
+
+**Duration:** 20 minutes
+
+---
+
+# Classwork 1: Your Tasks
+
+Open: `classwork_1_gradient_descent/`
+
+1. Implement gradient descent for Facebook data
+
+2. Experiment with learning rates (0.001, 0.01, 0.1)
+
+3. Visualize the loss surface
+
+4. Compare to R's `lm()` function
+
+5. Think: How does this scale to billions of rows?
+
+**Template:** `template.Rmd`
+
+**Instructions:** `instructions.md`
+
+---
+class: center, middle
+
+# Welcome Back!
+
+### How did gradient descent feel?
+
+*Let's continue building our regression toolkit.*
+
+---
+
+# Where We Are
+
+**Completed:**
+- ✓ Business motivation for regression
+- ✓ Intuition behind minimizing squared errors
+- ✓ Gradient descent implementation
+- ✓ Single-variable regression (sales ~ google_spend)
+
+**Next:**
+- Multiple regression (sales ~ all channels)
+- Using R's `lm()` function professionally
+- Interpreting coefficients correctly
+- Making business recommendations
+
+---
+class: center, middle
+
+# Part 4: Multiple Regression
+## When One Variable Isn't Enough
+
+---
+
+# The Problem with Single Variables
+
+**CMO's real question:**
+
+*"If I spend $50K on Google AND $30K on Facebook simultaneously, what are expected sales?"*
+
+**Single-variable models can't answer this:**
+- Google model: Ignores Facebook effect
+- Facebook model: Ignores Google effect
+- **We need multiple regression**
+
+---
+
+# Confounding: A Cautionary Tale
+&lt;img src="slides_files/figure-html/unnamed-chunk-12-1.png" style="display: block; margin: auto;" /&gt;
+
+**Question:** Which channel is the real driver? 
+
+**Answer:** We can't tell without multiple regression!
+
+---
+
+# Multiple Regression: The Concept
+
+**Extend our model to multiple predictors:**
+
+`$$y = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_3 x_3 + \epsilon$$`
+
+**For our marketing data:**
+
+`$$\text{Sales} = \beta_0 + \beta_1 \cdot \text{Google} + \beta_2 \cdot \text{Facebook} + \beta_3 \cdot \text{Email} + \epsilon$$`
+
+Each `\(\beta\)` represents the **isolated effect** of that channel.
+
+---
+
+# Matrix Formulation
+
+**Instead of writing out each term:**
+
+`$$\mathbf{y} = \mathbf{X}\boldsymbol{\beta} + \boldsymbol{\epsilon}$$`
+
+**Where:**
+- `\(\mathbf{y}\)` = vector of outcomes (sales)
+- `\(\mathbf{X}\)` = design matrix (all predictors + intercept)
+- `\(\boldsymbol{\beta}\)` = vector of coefficients
+- `\(\boldsymbol{\epsilon}\)` = vector of errors
+
+**This is how R (and all statistical software) thinks about regression.**
+
+---
+
+# The Design Matrix
+&lt;table class="table table-striped table-hover" style="font-size: 14px; margin-left: auto; margin-right: auto;"&gt;
+&lt;caption style="font-size: initial !important;"&gt;Design Matrix X (first 6 rows)&lt;/caption&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:right;"&gt; Intercept &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Google &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Facebook &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Email &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 17.9 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 26.0 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 6.3 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 40.5 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 16.6 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 19.3 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 23.4 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 22.1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 12.8 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 44.7 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 38.4 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 11.3 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 47.3 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 21.9 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 9.2 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:right;"&gt; 1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 7.1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 36.2 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 17.8 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+**Each row** = one observation (week)
+
+**Each column** = one predictor (plus intercept)
+
+---
+
+# Same Optimization, More Dimensions
+
+**Loss function (unchanged concept):**
+
+`$$L(\boldsymbol{\beta}) = \sum_{i=1}^{n} (y_i - \hat{y}_i)^2 = (\mathbf{y} - \mathbf{X}\boldsymbol{\beta})^T(\mathbf{y} - \mathbf{X}\boldsymbol{\beta})$$`
+
+**Gradient descent still works:**
+- Now we have more parameters to optimize
+- Gradient is a vector (one element per parameter)
+- Algorithm is identical: update all `\(\beta\)`s simultaneously
+
+---
+
+# Visualizing Higher Dimensions
+
+.pull-left[
+**Single variable:**
+- Loss surface is 2D (bowl)
+- Easy to visualize
+
+**Multiple variables:**
+- Loss surface is high-dimensional
+- Harder to visualize
+- **Still convex** (one global minimum)
+]
+
+.pull-right[
+&lt;img src="slides_files/figure-html/unnamed-chunk-14-1.png" style="display: block; margin: auto;" /&gt;
+
+Still bowl-shaped!
+]
+
+---
+
+# Big Data Connection
+
+**Your laptop:** Design matrix fits in memory
+```r
+X &lt;- cbind(1, google, facebook, email)  # 100 rows × 4 cols
+beta &lt;- solve(t(X) %*% X) %*% t(X) %*% y
+```
+
+**Production scale:** 1B rows × 500 features
+
+- Design matrix distributed across nodes
+- Gradient computed in parallel on each partition
+- Parameters synchronized across cluster
+- **Framework:** Spark MLlib's LinearRegression
+
+---
+class: center, middle
+
+# Part 5: Using R's lm() Function
+
+---
+
+# Introducing lm()
+
+**What we've built manually:**
+- Gradient descent optimization
+- Parameter estimation
+- Loss computation
+
+**What R's `lm()` does:**
+- All of the above (using closed-form solution)
+- Plus diagnostics, inference, predictions
+- **In one line of code**
+
+---
+
+# Basic lm() Syntax
+
+``` r
+# Fit multiple regression model
+model &lt;- lm(sales ~ google_spend + facebook_spend + email_spend, 
+            data = marketing_data)
+
+# View results
+summary(model)
+```
+
+```
+## 
+## Call:
+## lm(formula = sales ~ google_spend + facebook_spend + email_spend, 
+##     data = marketing_data)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -23.313  -9.528  -1.811   8.488  43.506 
+## 
+## Coefficients:
+##                Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)     42.6283     6.1140   6.972 3.96e-10 ***
+## google_spend     2.4834     0.1101  22.557  &lt; 2e-16 ***
+## facebook_spend   2.0965     0.1534  13.665  &lt; 2e-16 ***
+## email_spend      1.0134     0.2673   3.791 0.000262 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Residual standard error: 13.96 on 96 degrees of freedom
+## Multiple R-squared:  0.8702,	Adjusted R-squared:  0.8662 
+## F-statistic: 214.6 on 3 and 96 DF,  p-value: &lt; 2.2e-16
+```
+
+---
+
+# Understanding the Output
+
+```
+## 
+## Call:
+## lm(formula = sales ~ google_spend + facebook_spend + email_spend, 
+##     data = marketing_data)
+## 
+## Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -23.313  -9.528  -1.811   8.488  43.506 
+## 
+## Coefficients:
+##                Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept)     42.6283     6.1140   6.972 3.96e-10 ***
+## google_spend     2.4834     0.1101  22.557  &lt; 2e-16 ***
+## facebook_spend   2.0965     0.1534  13.665  &lt; 2e-16 ***
+## email_spend      1.0134     0.2673   3.791 0.000262 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Residual standard error: 13.96 on 96 degrees of freedom
+## Multiple R-squared:  0.8702,	Adjusted R-squared:  0.8662 
+## F-statistic: 214.6 on 3 and 96 DF,  p-value: &lt; 2.2e-16
+```
+
+---
+
+# Extracting Coefficients
+
+``` r
+# Get coefficients
+coef(model)
+```
+
+```
+##    (Intercept)   google_spend facebook_spend    email_spend 
+##      42.628279       2.483438       2.096531       1.013376
+```
+
+**Interpretation:**
+
+- **Intercept:** Baseline sales with zero spend on all channels
+- **google_spend:** Holding Facebook and Email constant, $1K more Google → $2.46K more sales
+- **facebook_spend:** Holding Google and Email constant, $1K more Facebook → $1.79K more sales  
+- **email_spend:** Holding Google and Facebook constant, $1K more Email → $0.91K more sales
+
+---
+
+# The "Holding Constant" Phrase
+
+.center[
+### This is the most important phrase in regression interpretation
+]
+
+**Wrong:** "Google spend is associated with $2.46K sales"
+
+**Right:** "**Holding all other variables constant**, each additional $1K in Google spend is associated with $2.46K additional sales"
+
+**Why it matters:** Coefficients represent isolated effects, not marginal effects when changing everything.
+
+---
+
+# Making Predictions
+
+``` r
+# Predict sales for specific budget scenario
+new_budget &lt;- data.frame(
+  google_spend = 40,
+  facebook_spend = 35,
+  email_spend = 15
+)
+
+predicted_sales &lt;- predict(model, newdata = new_budget)
+
+cat(sprintf("Predicted sales: $%.1fK\n", predicted_sales))
+```
+
+```
+## Predicted sales: $230.5K
+```
+
+**Business use:** Test different budget allocations before committing.
+
+---
+
+# Comparing Budget Scenarios
+
+``` r
+scenarios &lt;- data.frame(
+  scenario = c("Current", "More Google", "More Facebook", "Balanced"),
+  google_spend = c(30, 50, 30, 40),
+  facebook_spend = c(30, 20, 50, 35),
+  email_spend = c(15, 15, 15, 15)
+)
+
+scenarios$predicted_sales &lt;- predict(model, newdata = scenarios)
+scenarios$total_spend &lt;- scenarios$google_spend + scenarios$facebook_spend + scenarios$email_spend
+
+scenarios
+```
+
+```
+##        scenario google_spend facebook_spend email_spend predicted_sales
+## 1       Current           30             30          15        195.2280
+## 2   More Google           50             20          15        223.9314
+## 3 More Facebook           30             50          15        237.1586
+## 4      Balanced           40             35          15        230.5450
+##   total_spend
+## 1          75
+## 2          85
+## 3          95
+## 4          90
+```
+
+---
+
+# Scenario Analysis Visualization
+&lt;img src="slides_files/figure-html/unnamed-chunk-20-1.png" style="display: block; margin: auto;" /&gt;
+
+**Insight:** Balanced allocation outperforms extreme scenarios.
+
+---
+
+# Model Fit: R-squared
+
+``` r
+# Extract R-squared
+summary(model)$r.squared
+```
+
+```
+## [1] 0.8702199
+```
+
+**Business translation:**
+
+"Our model explains 87% of variance in sales."
+
+**What about the remaining 13%?**
+
+- Seasonality we haven't modeled
+- Competitor actions
+- Economic conditions
+- Measurement error
+- Random variation
+
+---
+
+# Residuals: What We Got Wrong
+&lt;img src="slides_files/figure-html/unnamed-chunk-22-1.png" style="display: block; margin: auto;" /&gt;
+
+**Good sign:** Random scatter around zero (no obvious patterns)
+
+---
+
+# Accessing Model Components
+
+``` r
+# Fitted values (predictions for training data)
+head(fitted(model), 3)
+```
+
+```
+##        1        2        3 
+## 147.9759 197.5681 160.0453
+```
+
+``` r
+# Residuals (errors)
+head(residuals(model), 3)
+```
+
+```
+##         1         2         3 
+## 11.124124 12.531931  4.754741
+```
+
+``` r
+# Confidence intervals for coefficients
+confint(model, level = 0.95)
+```
+
+```
+##                     2.5 %    97.5 %
+## (Intercept)    30.4920200 54.764538
+## google_spend    2.2648951  2.701980
+## facebook_spend  1.7919881  2.401073
+## email_spend     0.4828119  1.543941
+```
+
+---
+
+# Prediction Intervals
+
+``` r
+# Predict with uncertainty
+predict(model, newdata = new_budget, interval = "prediction", level = 0.95)
+```
+
+```
+##       fit      lwr      upr
+## 1 230.545 202.1555 258.9344
+```
+
+**Interpretation:**
+
+- **Point estimate:** $230.5K
+- **95% prediction interval:** [202.2, 258.9]
+
+**Business use:** Communicate uncertainty to stakeholders.
+
+---
+class: center, middle
+
+# Part 6: Business Case Study
+
+---
+
+# Case Study: Target's Predictive Analytics
+
+**Background:**
+
+Target uses multiple regression with 25+ variables to predict:
+- Pregnancy likelihood
+- Due date estimation
+- Product purchase propensity
+
+**Variables include:**
+- Purchase history (lotions, supplements, vitamins)
+- Browsing behavior
+- Demographics
+- Shopping frequency
+
+---
+
+# The Target Pregnancy Model
+
+**How it works:**
+
+1. **Training data:** Purchases from confirmed pregnant customers
+
+2. **Features:** 
+   - Unscented lotion purchases
+   - Magnesium supplements
+   - Cotton balls
+   - Hand sanitizer
+   - (25+ total features)
+
+3. **Output:** Pregnancy probability score
+
+4. **Action:** Send targeted coupons
+
+---
+
+# The Power and Peril
+
+**Power:**
+- Personalization at scale
+- Increased customer lifetime value
+- Anticipatory service
+
+**Peril:**
+- Privacy invasion
+- Potential to reveal sensitive information
+- Ethical questions about inference
+
+**Famous incident:** Target sent pregnancy coupons to teenager before her father knew she was pregnant.
+
+---
+
+# Lessons for Practitioners
+
+1. **Multiple regression enables powerful predictions**
+
+2. **More variables ≠ always better** (privacy, interpretability)
+
+3. **Statistical association ≠ causation**
+
+4. **Models reflect our values** (what we optimize, who we serve)
+
+5. **Stakeholder communication is critical**
+
+---
+
+# Big Data at Scale
+
+**Target's production system:**
+
+- **Data volume:** Billions of transactions
+- **Features:** 500+ behavioral signals
+- **Real-time:** Predictions generated as customers shop
+- **Infrastructure:** Distributed model serving
+
+**Architecture:**
+- Models trained on Spark clusters
+- Served via microservices
+- A/B tested continuously
+- Monitored for drift
+
+---
+
+# Prediction vs. Explanation
+
+**Two modes of regression:**
+
+.pull-left[
+**Prediction Mode**
+- Goal: Accurate forecasts
+- Metric: RMSE, R²
+- Use case: Sales forecasting
+- Trade-off: Complexity okay
+]
+
+.pull-right[
+**Explanation Mode**
+- Goal: Understand relationships
+- Metric: Unbiased coefficients
+- Use case: Causal inference
+- Trade-off: Simplicity preferred
+]
+
+**Different goals require different approaches.**
+
+---
+
+# When to Use Multiple Regression
+
+**Good fit when:**
+- Linear relationships (or can be transformed)
+- Independent observations
+- Want interpretable coefficients
+- Need inference (confidence intervals, p-values)
+
+**Poor fit when:**
+- Highly non-linear relationships
+- Complex interactions
+- Pure prediction accuracy matters most
+- Black box acceptable
+
+---
+
+# Ethical Considerations
+
+**Questions to ask before deployment:**
+
+1. Could this model discriminate against protected groups?
+
+2. Are we optimizing for equity or efficiency?
+
+3. What happens when the model is wrong?
+
+4. Can affected individuals contest predictions?
+
+5. Are we transparent about model use?
+
+---
+class: inverse, center, middle
+
+# 🎯 CLASSWORK TIME
+
+## Build Your Marketing Model
+
+**Duration:** 20 minutes
+
+---
+
+# Classwork 2: Multiple Regression
+
+Open: `classwork_2_multiple_regression/`
+
+**Your tasks:**
+
+1. Fit a multiple regression model (all 3 channels)
+
+2. Interpret each coefficient for the CMO
+
+3. Test 5 different budget scenarios
+
+4. Recommend optimal allocation for Q4
+
+5. Compute prediction intervals for your recommendation
+
+6. Discuss: What factors are NOT in this model?
+
+**Template:** `template.Rmd`
+
+---
+
+# Preparation for Next Section
+
+**After classwork, we'll cover:**
+
+- Assumption checking (linearity, normality, homoscedasticity)
+- Multicollinearity diagnostics
+- Outlier detection
+- Model validation techniques
+
+**This ensures our recommendations are trustworthy.**
+
+---
+
+---
+class: center, middle
+
+# Welcome Back!
+
+### How did multiple regression feel?
+
+*Now let's learn to trust (or distrust) our models.*
+
+---
+
+# Where We Are
+
+**Completed:**
+- ✓ Single and multiple regression theory
+- ✓ Gradient descent implementation
+- ✓ Using R's `lm()` function
+- ✓ Making predictions and recommendations
+
+**Next:**
+- **Diagnostics:** Can we trust this model?
+- Checking regression assumptions
+- Detecting multicollinearity
+- Identifying outliers and influential points
+
+---
+class: center, middle
+
+# Part 7: Model Diagnostics
+## Trust, But Verify
+
+---
+
+# Why Diagnostics Matter
+
+**Scenario:**
+
+You present your model to the CFO:
+
+*"We recommend investing $100K more in Google Ads based on our regression model showing a 2.5x return."*
+
+**CFO asks:** *"How do you know your model is reliable?"*
+
+**You need diagnostics to answer confidently.**
+
+---
+
+# The Four Key Assumptions
+
+Linear regression assumes:
+
+1. **Linearity:** Relationship between X and Y is linear
+
+2. **Independence:** Observations are independent
+
+3. **Normality:** Residuals are normally distributed
+
+4. **Homoscedasticity:** Constant variance of residuals
+
+**Acronym: LINE**
+
+Each violation has consequences for inference.
+
+---
+
+# Assumption 1: Linearity
+
+**Check:** Residuals vs. Fitted Values plot
+&lt;img src="slides_files/figure-html/unnamed-chunk-25-1.png" style="display: block; margin: auto;" /&gt;
+
+**This looks good:** Random scatter, no obvious pattern.
+
+---
+
+# Linearity Violation Example
+&lt;img src="slides_files/figure-html/unnamed-chunk-26-1.png" style="display: block; margin: auto;" /&gt;
+
+**Red flag:** Systematic curvature indicates non-linearity.
+
+---
+
+# Fixing Non-Linearity
+
+**Options when linearity is violated:**
+
+1. **Transform variables:** Log, square root, polynomial
+
+2. **Add polynomial terms:** `I(x^2)`, `I(x^3)`
+
+3. **Use non-linear methods:** GAMs, splines, decision trees
+
+4. **Segment data:** Fit different models for different ranges
+
+---
+
+# Assumption 2: Independence
+
+**Check:** Durbin-Watson test, residuals vs. time
+
+``` r
+library(car)
+durbinWatsonTest(model)
+```
+
+```
+##  lag Autocorrelation D-W Statistic p-value
+##    1      -0.1100934      2.211776   0.294
+##  Alternative hypothesis: rho != 0
+```
+
+**Interpretation:**
+- D-W statistic near 2 → no autocorrelation (good)
+- D-W near 0 → positive autocorrelation (bad)
+- D-W near 4 → negative autocorrelation (bad)
+
+---
+
+# Independence in Business Context
+
+**Common violations:**
+
+- **Time series:** Sales today affect sales tomorrow
+- **Spatial:** Stores in same region are correlated
+- **Hierarchical:** Students within same school
+
+**Consequence:** Standard errors are wrong, CIs too narrow
+
+**Solution:** Use appropriate models (time series, mixed effects)
+
+---
+
+# Assumption 3: Normality
+
+**Check:** Q-Q plot of residuals
+&lt;img src="slides_files/figure-html/unnamed-chunk-28-1.png" style="display: block; margin: auto;" /&gt;
+
+**Good:** Points fall close to the diagonal line.
+
+**Normality matters most for:** Inference (confidence intervals, hypothesis tests)
+
+---
+
+# Normality Violation Example
+&lt;img src="slides_files/figure-html/unnamed-chunk-29-1.png" style="display: block; margin: auto;" /&gt;
+
+**Red flag:** Points deviate systematically from line.
+
+---
+
+# When Normality Matters Less
+
+**Good news:**
+
+With large samples (n &gt; 30), the Central Limit Theorem helps.
+
+- Coefficient estimates remain unbiased
+- Predictions remain accurate
+- Only confidence intervals affected
+
+**When it matters most:**
+
+- Small samples (n &lt; 30)
+- Extreme outliers present
+- Making probabilistic statements
+
+---
+
+# Assumption 4: Homoscedasticity
+
+**Constant variance of residuals across fitted values**
+&lt;img src="slides_files/figure-html/unnamed-chunk-30-1.png" style="display: block; margin: auto;" /&gt;
+
+**This is good:** Vertical spread roughly constant.
+
+---
+
+# Heteroscedasticity Violation
+&lt;img src="slides_files/figure-html/unnamed-chunk-31-1.png" style="display: block; margin: auto;" /&gt;
+
+**Red flag:** Spreading residuals (funnel shape).
+
+---
+
+# Fixing Heteroscedasticity
+
+**Options:**
+
+1. **Transform Y:** Log transformation often helps
+
+2. **Weighted Least Squares:** Give less weight to high-variance observations
+
+3. **Robust standard errors:** Sandwich estimators (Huber-White)
+
+4. **Different model:** GLM with appropriate error distribution
+
+---
+class: center, middle
+
+# Part 8: Multicollinearity
+
+---
+
+# What is Multicollinearity?
+
+**Definition:** High correlation among predictor variables
+
+**Example in our data:**
+
+If Google and Facebook spend are highly correlated (spend on both simultaneously), the model struggles to separate their individual effects.
+
+---
+
+# Why Multicollinearity is a Problem
+
+**Consequences:**
+
+1. **Unstable coefficients:** Small data changes cause large coefficient swings
+
+2. **Inflated standard errors:** CIs become very wide
+
+3. **Contradictory signs:** Coefficients may have wrong signs
+
+4. **Interpretation failure:** Can't answer "which channel matters more?"
+
+**Note:** Predictions may still be accurate!
+
+---
+
+# Detecting Multicollinearity: Correlation Matrix
+
+``` r
+# Check correlations among predictors
+marketing_predictors &lt;- marketing_data %&gt;% 
+  select(google_spend, facebook_spend, email_spend)
+
+cor(marketing_predictors)
+```
+
+```
+##                google_spend facebook_spend email_spend
+## google_spend     1.00000000    -0.08686789 -0.06736661
+## facebook_spend  -0.08686789     1.00000000 -0.10390253
+## email_spend     -0.06736661    -0.10390253  1.00000000
+```
+
+**Rule of thumb:** Correlations &gt; 0.8 are concerning.
+
+**Our data:** Low correlations, no multicollinearity issues.
+
+---
+
+# Detecting Multicollinearity: VIF
+
+**Variance Inflation Factor (VIF)**
+
+``` r
+library(car)
+vif(model)
+```
+
+```
+##   google_spend facebook_spend    email_spend 
+##       1.013629       1.020041       1.016959
+```
+
+**Interpretation:**
+- VIF = 1: No correlation with other predictors
+- VIF &lt; 5: Acceptable
+- VIF 5-10: Moderate multicollinearity (investigate)
+- VIF &gt; 10: Severe multicollinearity (fix required)
+
+**Our model:** All VIFs &lt; 2, excellent!
+
+---
+
+# VIF Intuition
+
+**VIF measures:** How much variance of `\(\hat{\beta}_j\)` is inflated due to correlation with other predictors.
+
+`$$\text{VIF}_j = \frac{1}{1 - R^2_j}$$`
+
+Where `\(R^2_j\)` = R-squared from regressing `\(X_j\)` on all other predictors.
+
+**High `\(R^2_j\)`** → predictor `\(j\)` is well-explained by others → redundant!
+
+---
+
+# Multicollinearity Example
+&lt;table class="table table-striped" style="font-size: 14px; margin-left: auto; margin-right: auto;"&gt;
+&lt;caption style="font-size: initial !important;"&gt;Severe Multicollinearity Example&lt;/caption&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt; Variable &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; VIF &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; google &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 41.61094 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; facebook &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 41.61094 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+**Both VIFs &gt; 10:** Severe multicollinearity!
+
+---
+
+# Fixing Multicollinearity
+
+**Options:**
+
+1. **Remove one variable:** Drop the less important predictor
+
+2. **Combine variables:** Create composite index (e.g., "total_digital_spend")
+
+3. **Collect more data:** Sometimes helps if correlation is sample-specific
+
+4. **Use regularization:** Ridge or Lasso regression (Lecture 3)
+
+5. **Principal Components:** Transform to uncorrelated components
+
+---
+
+# Big Data &amp; Multicollinearity
+
+**At scale:**
+
+- VIF calculation becomes expensive with 1000+ features
+- Use correlation heatmaps for initial screening
+- Automated feature selection algorithms (Lasso, Elastic Net)
+- Monitor condition number of `\(X^TX\)` matrix
+
+**Production systems:** Often accept some multicollinearity for prediction, but flag for causal interpretation.
+
+---
+class: center, middle
+
+# Part 9: Outliers &amp; Influence
+
+---
+
+# Types of Unusual Points
+
+**Three categories:**
+
+1. **Outliers:** Unusual Y value (large residual)
+
+2. **High leverage:** Unusual X values (far from predictor mean)
+
+3. **Influential points:** Change model substantially if removed
+
+**Not all outliers are influential!**
+
+---
+
+# Identifying Outliers: Standardized Residuals
+
+``` r
+# Standardize residuals
+std_resid &lt;- rstandard(model)
+
+# Flag extreme values
+outliers &lt;- which(abs(std_resid) &gt; 2.5)
+
+if(length(outliers) &gt; 0) {
+  cat("Potential outliers at observations:", outliers, "\n")
+} else {
+  cat("No extreme outliers detected (|std.resid| &gt; 2.5)\n")
+}
+```
+
+```
+## Potential outliers at observations: 14 24
+```
+
+**Rule:** Standardized residuals beyond ±2.5 warrant investigation.
+
+---
+
+# Leverage: Hat Values
+
+``` r
+# Calculate leverage
+hat_values &lt;- hatvalues(model)
+
+# Plot
+plot(hat_values, type = "h", col = course_colors[1], lwd = 2,
+     main = "Leverage Plot", ylab = "Hat Values", xlab = "Observation")
+abline(h = 2 * mean(hat_values), col = "red", lty = 2, lwd = 2)
+```
+
+&lt;img src="slides_files/figure-html/unnamed-chunk-36-1.png" style="display: block; margin: auto;" /&gt;
+
+**High leverage:** Observation far from predictor means.
+
+**Threshold:** Hat value &gt; `\(2(k+1)/n\)` where `\(k\)` = # predictors.
+
+---
+
+# Influence: Cook's Distance
+
+``` r
+# Calculate Cook's distance
+cooks_d &lt;- cooks.distance(model)
+
+# Plot
+plot(cooks_d, type = "h", col = course_colors[2], lwd = 2,
+     main = "Cook's Distance", ylab = "Cook's D", xlab = "Observation")
+abline(h = 4/nrow(marketing_data), col = "red", lty = 2, lwd = 2)
+```
+
+&lt;img src="slides_files/figure-html/unnamed-chunk-37-1.png" style="display: block; margin: auto;" /&gt;
+
+**Rule:** Cook's D &gt; 4/n suggests influential observation.
+
+---
+
+# Influence Plot
+
+``` r
+influencePlot(model, id.method = "identify", 
+              main = "Influence Plot", 
+              sub = "Size of bubble ∝ Cook's Distance")
+```
+
+&lt;img src="slides_files/figure-html/unnamed-chunk-38-1.png" style="display: block; margin: auto;" /&gt;
+
+```
+##       StudRes        Hat        CookD
+## 6  -0.7114588 0.07158426 0.0098074107
+## 14  3.3579781 0.04619890 0.1233404555
+## 24  2.6373463 0.05489780 0.0951065997
+## 89  0.1148575 0.07052580 0.0002528464
+```
+
+**Interpretation:** Points in upper right are most problematic.
+
+---
+
+# What to Do with Influential Points?
+
+**Steps:**
+
+1. **Investigate:** Is it a data entry error? Genuine outlier?
+
+2. **Understand why:** What makes this observation unusual?
+
+3. **Assess impact:** Refit without it. Do conclusions change?
+
+4. **Business context:** Is this outlier actually important? (e.g., Black Friday sales)
+
+**Don't automatically delete outliers!**
+
+---
+
+# Case Study: When Outliers Matter
+
+**Scenario:** Your model shows Google Ads ROI is 2.5x.
+
+**But:** One week had 10x return (viral event, PR coverage).
+
+**Question:** Include or exclude this week?
+
+**Answer depends on:**
+- Will viral events happen again? (Yes → include)
+- Making typical day predictions? (No → exclude)
+- Explaining to CMO? (Show both models)
+
+---
+class: center, middle
+
+# Part 10: Putting It All Together
+
+---
+
+# The Regression Diagnostic Checklist
+
+**Before trusting your model:**
+
+- ☐ Linearity: Check residuals vs. fitted plot
+- ☐ Independence: Check Durbin-Watson test
+- ☐ Normality: Check Q-Q plot
+- ☐ Homoscedasticity: Check residuals vs. fitted plot
+- ☐ Multicollinearity: Check VIF values
+- ☐ Outliers: Check standardized residuals
+- ☐ Leverage: Check hat values
+- ☐ Influence: Check Cook's distance
+
+**Print this. Use it every time.**
+
+---
+
+# Comprehensive Diagnostic Function
+
+``` r
+# All-in-one diagnostic function
+run_diagnostics &lt;- function(model) {
+  
+  par(mfrow = c(2, 3))
+  
+  # 1. Residuals vs Fitted
+  plot(model, which = 1)
+  
+  # 2. Q-Q Plot
+  plot(model, which = 2)
+  
+  # 3. Scale-Location
+  plot(model, which = 3)
+  
+  # 4. Cook's Distance
+  plot(model, which = 4)
+  
+  # 5. Residuals vs Leverage
+  plot(model, which = 5)
+  
+  # 6. Cook's vs Leverage
+  plot(model, which = 6)
+  
+  par(mfrow = c(1, 1))
+  
+  # Print VIF
+  print(vif(model))
+  
+  # Print Durbin-Watson
+  print(durbinWatsonTest(model))
+}
+```
+
+---
+
+# Using Built-in Diagnostic Plots
+
+``` r
+# R's built-in diagnostic plots
+par(mfrow = c(2, 2))
+plot(model)
+```
+
+&lt;img src="slides_files/figure-html/unnamed-chunk-40-1.png" style="display: block; margin: auto;" /&gt;
+
+``` r
+par(mfrow = c(1, 1))
+```
+
+**Four essential plots in one command.**
+
+---
+
+# Interpreting the Four Plots
+
+1. **Residuals vs Fitted:** Check linearity, homoscedasticity
+
+2. **Q-Q Plot:** Check normality of residuals
+
+3. **Scale-Location:** Check homoscedasticity (alternative view)
+
+4. **Residuals vs Leverage:** Identify influential points
+
+**These four plots tell 90% of the diagnostic story.**
+
+---
+
+# From Diagnostics to Action
+
+**If violations found:**
+
+1. **Document findings:** What assumptions are violated?
+
+2. **Assess severity:** Minor or major violation?
+
+3. **Implement fixes:** Transformations, robust methods, different models
+
+4. **Refit and recheck:** Did fixes work?
+
+5. **Communicate clearly:** Tell stakeholders about limitations
+
+---
+
+# Ethical Diagnostics
+
+**Residual analysis by subgroup:**
+
+``` r
+# Check if model performs equally across segments
+marketing_data &lt;- marketing_data %&gt;%
+  mutate(region = sample(c("North", "South", "East", "West"), 
+                        n(), replace = TRUE),
+         residual = residuals(model))
+
+# Plot residuals by region
+ggplot(marketing_data, aes(x = region, y = residual)) +
+  geom_boxplot() +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red")
+```
+
+**Systematic bias by region/demographic = equity issue.**
+
+---
+
+# Week 1 Summary
+
+**What we've learned:**
+
+- Regression as a decision-making tool
+- Gradient descent optimization
+- Single and multiple regression
+- Using R's `lm()` function
+- Interpreting coefficients correctly
+- Comprehensive model diagnostics
+
+**Skills gained:** Build, validate, and communicate regression models.
+
+---
+
+# Looking Ahead
+
+**Next lectures:**
+
+- **Lecture 2:** Classification (logistic regression, ROC, AUC)
+- **Lecture 3:** Advanced regression (regularization, feature engineering)
+
+**Project 1 (due end of week):**
+
+E-Commerce Sales Optimization with complete analysis, diagnostics, and business recommendations.
+
+---
+class: inverse, center, middle
+
+# 📝 HOMEWORK TIME
+
+## Complete Regression Analysis
+
+**Due:** Before Lecture 2
+
+---
+
+# Homework 1: Full Regression Workflow
+
+Open: `homework/`
+
+**Your comprehensive task:**
+
+Build a regression model from a new dataset, run all diagnostics, fix violations, and present recommendations.
+
+**Dataset:** `retail_sales_messy.csv` (deliberately has issues!)
+
+**Deliverables:**
+1. Exploratory data analysis
+2. Initial model with diagnostics
+3. Identified violations and fixes
+4. Final model with validation
+5. Executive summary (2 pages)
+
+**Template:** `homework_template.Rmd`
+
+---
+
+# Homework Expectations
+
+**Technical components:**
+
+- Model fitting and comparison
+- All diagnostic checks performed
+- Clear documentation of violations
+- Appropriate remedial measures
+- Validation on holdout data
+
+**Communication components:**
+
+- Business-focused interpretation
+- Visualizations with clear labels
+- Executive summary for non-technical audience
+- Limitations clearly stated
+
+---
+
+# Resources for Homework
+
+**Helpful references:**
+
+- Course utilities folder (functions we've built)
+- Lecture slides (all code is reproducible)
+- R documentation: `?lm`, `?plot.lm`
+
+**Collaboration policy:**
+
+- Discuss concepts with peers
+- Write your own code and reports
+- Cite any external resources used
+
+---
+
+
+---
+class: center, middle
+
+# Part 11: Advanced Interpretation
+## Beyond Basic Coefficients
+
+---
+
+# Interpretation Challenges
+
+**You report to the CMO:**
+
+*"Google Ads coefficient is 2.5, Facebook is 1.8, Email is 0.9"*
+
+**She asks:**
+
+1. *"Which should I prioritize if I have limited budget?"*
+2. *"Show me visually what each channel contributes independently"*
+3. *"How confident are you in these numbers?"*
+4. *"Which matters more: the 2.5 vs 1.8 difference, or the statistical significance?"*
+
+**We need better tools to answer these questions.**
+
+---
+
+# Today's Advanced Tools
+
+**Four powerful techniques:**
+
+1. **Partial regression plots** - Visualize isolated effects
+
+2. **Added variable plots** - Show unique contributions
+
+3. **Standardized coefficients** - Compare apples to apples
+
+4. **Effect sizes** - Distinguish statistical from practical significance
+
+5. **Prediction intervals** - Quantify uncertainty properly
+
+---
+class: center, middle
+
+# Partial Regression Plots
+
+---
+
+# What is a Partial Regression Plot?
+
+**Concept:** Show the relationship between Y and X1 **after removing the effects of all other predictors**
+
+**Why it matters:** In multiple regression, we can't just plot Y vs X1—that includes confounding from X2, X3, etc.
+
+**Partial regression plot shows the "pure" effect**
+
+---
+
+# Creating Partial Regression Plots
+
+**Algorithm:**
+
+1. Regress Y on all predictors **except** X1 → get residuals (e_Y)
+
+2. Regress X1 on all other predictors → get residuals (e_X1)
+
+3. Plot e_Y vs e_X1
+
+4. The slope of this plot = β1 from full model
+
+**These residuals contain only the variation not explained by other variables**
+
+---
+
+# Partial Regression: Google Ads Example
+&lt;img src="slides_files/figure-html/unnamed-chunk-42-1.png" style="display: block; margin: auto;" /&gt;
+
+**This is the unique contribution of Google Ads**
+
+---
+
+# Interpreting Partial Regression Plots
+
+``` r
+# The slope of this partial regression plot
+coef(lm(resid_sales ~ resid_google))
+```
+
+```
+##   (Intercept)  resid_google 
+## -1.151690e-15  2.483438e+00
+```
+
+``` r
+# Compare to coefficient from full model
+coef(model)["google_spend"]
+```
+
+```
+## google_spend 
+##     2.483438
+```
+
+**They match!** This proves the partial regression plot shows the true isolated effect.
+
+---
+
+# All Three Channels: Partial Regression
+&lt;img src="slides_files/figure-html/unnamed-chunk-44-1.png" style="display: block; margin: auto;" /&gt;
+
+**Visual comparison of effect strengths**
+
+---
+
+# Business Communication with Partial Plots
+
+**To the CMO:**
+
+*"These three plots show what each channel contributes INDEPENDENTLY. After accounting for all other marketing, Google Ads shows the steepest relationship with sales—each dollar has the highest isolated return."*
+
+**This is far more convincing than just reporting coefficients**
+
+---
+
+# R Function for Partial Regression
+
+``` r
+# Quick function for partial regression plots
+library(car)
+
+# Built-in partial regression plots
+avPlots(model, terms = ~ google_spend + facebook_spend + email_spend)
+```
+
+&lt;img src="slides_files/figure-html/unnamed-chunk-45-1.png" style="display: block; margin: auto;" /&gt;
+
+**The `car` package does this automatically!**
+
+---
+class: center, middle
+
+# Standardized Coefficients
+
+---
+
+# The Comparison Problem
+
+**Current coefficients:**
+
+- Google: 2.46 ($/K per $/K spend)
+- Facebook: 1.79 ($/K per $/K spend)  
+- Email: 0.91 ($/K per $/K spend)
+
+**But:**
+- Google spend ranges $5K-$50K
+- Email spend ranges $2K-$20K
+
+**Question:** Which has MORE TOTAL IMPACT given their typical variation?
+
+---
+
+# Standardized Coefficients (Beta Weights)
+
+**Idea:** Express everything in standard deviation units
+
+`$$\beta^* = \beta \cdot \frac{SD(X)}{SD(Y)}$$`
+
+**Interpretation:** 
+
+*"A 1 standard deviation increase in X is associated with β* standard deviation change in Y"*
+
+**Now we can compare apples to apples**
+
+---
+
+# Computing Standardized Coefficients
+
+``` r
+# Method 1: Scale the data before fitting
+marketing_scaled &lt;- marketing_data %&gt;%
+  mutate(across(c(sales, google_spend, facebook_spend, email_spend), scale))
+
+model_standardized &lt;- lm(sales ~ google_spend + facebook_spend + email_spend, 
+                         data = marketing_scaled)
+
+coef(model_standardized)[-1]  # Exclude intercept
+```
+
+```
+##   google_spend facebook_spend    email_spend 
+##      0.8349922      0.5074434      0.1405755
+```
+
+These are standardized coefficients (betas)
+
+---
+
+# Method 2: Calculate from Original Model
+
+``` r
+# Calculate manually
+library(lm.beta)
+lm.beta(model)
+```
+
+```
+## 
+## Call:
+## lm(formula = sales ~ google_spend + facebook_spend + email_spend, 
+##     data = marketing_data)
+## 
+## Standardized Coefficients::
+##    (Intercept)   google_spend facebook_spend    email_spend 
+##             NA      0.8349922      0.5074434      0.1405755
+```
+
+**Easier:** Use the `lm.beta` package
+
+---
+
+# Interpreting Standardized Coefficients
+&lt;table class="table table-striped table-hover" style="font-size: 14px; margin-left: auto; margin-right: auto;"&gt;
+&lt;caption style="font-size: initial !important;"&gt;Raw vs. Standardized Coefficients&lt;/caption&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt; Channel &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Raw Coefficient &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Standardized (β*) &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Google Ads &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 2.483 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.835 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Facebook &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 2.097 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.507 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Email &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 1.013 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.141 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+**New insight:** Google still ranks highest, but the gap is larger when accounting for typical variation.
+
+---
+
+# Visualization: Standardized Effects
+&lt;img src="slides_files/figure-html/unnamed-chunk-49-1.png" style="display: block; margin: auto;" /&gt;
+
+**Google Ads has 2x the impact of Email when considering realistic variation**
+
+---
+
+# Business Translation
+
+**To the CFO:**
+
+*"When we increase Google Ads spending by a typical amount (1 standard deviation = $12K), sales increase by 0.52 standard deviations ($39K)."*
+
+*"The same typical increase in Email spending ($5K) yields only 0.15 standard deviations ($11K) in sales."*
+
+*"Google Ads delivers 3.5x more impact per typical investment."*
+
+---
+
+# When to Use Standardized Coefficients
+
+**Use standardized coefficients when:**
+
+- Comparing predictors measured in different units
+- Assessing relative importance
+- Predictors have different scales/ranges
+- Communicating to non-technical audiences
+
+**Avoid standardized coefficients when:**
+
+- Making specific predictions (use raw coefficients)
+- Variables are already comparable (e.g., all in dollars)
+- Audience needs actual units for decisions
+
+---
+class: center, middle
+
+# Effect Sizes &amp; Practical Significance
+
+---
+
+# Statistical vs. Practical Significance
+
+**Statistical significance:** Is the effect reliably different from zero?
+
+**Practical significance:** Is the effect large enough to matter for decisions?
+
+**With large samples, tiny effects become statistically significant but may be meaningless for business**
+
+---
+
+# Example: The "Significant" Email Effect
+
+``` r
+summary(model)$coefficients["email_spend", ]
+```
+
+```
+##     Estimate   Std. Error      t value     Pr(&gt;|t|) 
+## 1.0133763037 0.2672889709 3.7913135741 0.0002617769
+```
+
+**Statistical test:**
+- Coefficient: 0.91
+- P-value: &lt; 0.001 (highly significant!)
+
+**But is it practically significant?**
+
+---
+
+# Calculating Practical Impact
+
+``` r
+# Current average email spend
+current_email &lt;- mean(marketing_data$email_spend)
+
+# Realistic increase: +50%
+increased_email &lt;- current_email * 1.5
+delta_email &lt;- increased_email - current_email
+
+# Expected sales increase
+email_coef &lt;- coef(model)["email_spend"]
+sales_increase &lt;- email_coef * delta_email
+
+cat(sprintf("Increasing email by 50%% (+ $%.1fK):\n", delta_email))
+```
+
+```
+## Increasing email by 50% (+ $5.4K):
+```
+
+``` r
+cat(sprintf("Expected sales increase: $%.1fK\n", sales_increase))
+```
+
+```
+## Expected sales increase: $5.4K
+```
+
+``` r
+cat(sprintf("ROI: %.1f%%\n", (sales_increase / delta_email - 1) * 100))
+```
+
+```
+## ROI: 1.3%
+```
+
+**Modest return—may not justify operational effort**
+
+---
+
+# Effect Size Guidelines
+
+**Cohen's guidelines for standardized effects:**
+
+- **Small:** β* ≈ 0.1-0.3
+- **Medium:** β* ≈ 0.3-0.5  
+- **Large:** β* ≈ 0.5+
+&lt;table class="table table-striped" style="font-size: 14px; margin-left: auto; margin-right: auto;"&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt; Channel &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Standardized β &lt;/th&gt;
+   &lt;th style="text-align:left;"&gt; Effect Size &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Google Ads &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.835 &lt;/td&gt;
+   &lt;td style="text-align:left;"&gt; Large &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Facebook &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.507 &lt;/td&gt;
+   &lt;td style="text-align:left;"&gt; Large &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Email &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.141 &lt;/td&gt;
+   &lt;td style="text-align:left;"&gt; Small &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+**Google and Facebook show large effects; Email shows small effect**
+
+---
+
+# Business Decision Matrix
+&lt;img src="slides_files/figure-html/unnamed-chunk-53-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Communicating Effect Sizes
+
+**Poor communication:**
+
+*"All three channels are statistically significant at p &lt; 0.001"*
+
+**Better communication:**
+
+*"Google and Facebook show large, actionable effects. Email shows a small but statistically reliable effect. Given limited budget, prioritize Google and Facebook."*
+
+**Include:** Effect size, confidence, and business context
+
+---
+class: center, middle
+
+# Confidence vs. Prediction Intervals
+
+---
+
+# Two Types of Uncertainty
+
+**Scenario:** CMO plans to spend $40K Google, $35K Facebook, $15K Email next month.
+
+**Two different questions:**
+
+1. *"What's the average sales for companies with this spending?"* → **Confidence interval**
+
+2. *"What will OUR sales be next month?"* → **Prediction interval**
+
+**Prediction intervals are always wider**
+
+---
+
+# Confidence Interval: Mean Response
+
+``` r
+new_budget &lt;- data.frame(
+  google_spend = 40,
+  facebook_spend = 35,
+  email_spend = 15
+)
+
+# Confidence interval for MEAN response
+predict(model, newdata = new_budget, interval = "confidence", level = 0.95)
+```
+
+```
+##       fit      lwr      upr
+## 1 230.545 224.3547 236.7352
+```
+
+**Interpretation:**
+
+*"We're 95% confident the average sales for all companies with this spending is between $219K and $233K"*
+
+---
+
+# Prediction Interval: Individual Response
+
+``` r
+# Prediction interval for INDIVIDUAL response
+predict(model, newdata = new_budget, interval = "prediction", level = 0.95)
+```
+
+```
+##       fit      lwr      upr
+## 1 230.545 202.1555 258.9344
+```
+
+**Interpretation:**
+
+*"We're 95% confident YOUR sales next month will be between $193K and $259K"*
+
+**Much wider!** Accounts for individual variation.
+
+---
+
+# Why Prediction Intervals Are Wider
+
+**Sources of uncertainty:**
+
+**Confidence interval accounts for:**
+- Sampling variability (uncertainty about β)
+
+**Prediction interval accounts for:**
+- Sampling variability (uncertainty about β)
+- **Plus:** Individual observation variability (σ²)
+
+`$$\text{Pred. Interval Width} = \text{Conf. Interval Width} + \text{Residual SD}$$`
+
+---
+
+# Visualizing Both Intervals
+&lt;img src="slides_files/figure-html/unnamed-chunk-56-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# When to Use Each Interval
+
+**Use confidence intervals when:**
+
+- Describing the average relationship
+- Comparing groups or treatments
+- Testing hypotheses about population parameters
+- Academic or research contexts
+
+**Use prediction intervals when:**
+
+- Forecasting specific future outcomes
+- Making individual predictions
+- Communicating decision uncertainty to executives
+- **Business contexts** (almost always)
+
+---
+
+# Communicating Uncertainty to Executives
+
+**Poor communication:**
+
+*"Expected sales are $226K with 95% CI [219, 233]"*
+
+**Better communication:**
+
+*"Our best estimate is $226K in sales. We're 95% confident your actual sales will fall between $193K and $259K. Given your $200K target, we're 72% confident you'll exceed it."*
+
+**Include actionable probability statement**
+
+---
+
+# Calculating Decision Probabilities
+
+``` r
+# What's the probability of exceeding $200K target?
+point_estimate &lt;- predict(model, newdata = new_budget)
+pred_se &lt;- predict(model, newdata = new_budget, 
+                   interval = "prediction", level = 0.95)
+
+# Calculate standard error of prediction
+pred_se_value &lt;- (pred_int[1, "upr"] - pred_int[1, "fit"]) / 1.96
+
+# Probability of exceeding target
+target &lt;- 200
+z_score &lt;- (point_estimate - target) / pred_se_value
+prob_exceed &lt;- pnorm(z_score)
+
+cat(sprintf("Probability of exceeding $200K: %.1f%%\n", prob_exceed * 100))
+```
+
+```
+## Probability of exceeding $200K: 98.3%
+```
+
+**This is decision-useful information**
+
+---
+class: center, middle
+
+# Big Data Context
+
+---
+
+# Interpretation at Scale
+
+**At small scale (n = 100):**
+
+- All our interpretation methods work well
+- Confidence intervals are meaningful
+- Effect sizes guide decisions
+
+**At big data scale (n = 10M):**
+
+- Standard errors become tiny (SE ~ 1/√n)
+- Everything is "statistically significant"
+- **Effect sizes are MORE important, not less**
+
+---
+
+# Google's A/B Testing Philosophy
+
+**Quote from Google:**
+
+*"With billions of users, we can detect a 0.01% improvement in click-through rate with p &lt; 0.001. But should we deploy? We ask: Is 0.01% worth the engineering cost?"*
+
+**Lesson:** Statistical significance is cheap at scale. Practical significance still matters.
+
+---
+
+# Real-Time Interpretation Systems
+
+**Production ML systems monitor:**
+
+- **Coefficient drift:** Are relationships changing over time?
+- **Effect size degradation:** Is impact weakening?
+- **Subgroup performance:** Equal impact across segments?
+
+**Tools:** MLflow, Weights &amp; Biases, Neptune.ai
+
+**Alert triggers:** When effect sizes drop below business-critical thresholds
+
+---
+
+# Interpretation Dashboards
+
+**Industry best practice:**
+```
+┌─────────────────────────────────────────────┐
+│  Model Performance Dashboard                │
+├─────────────────────────────────────────────┤
+│  Feature          │ β    │  β*  │  Trend   │
+│  advertising      │ 2.46 │ 0.52 │  ↑ 3%   │
+│  store_size       │ 0.02 │ 0.31 │  ↓ 1%   │
+│  competitor_dist  │ 3.10 │ 0.28 │  → 0%   │
+└─────────────────────────────────────────────┘
+
+Alert: "competitor_dist" effect size dropped 15% 
+over last 30 days. Investigate market changes.
+```
+
+---
+class: inverse, center, middle
+
+# 🎯 CLASSWORK TIME
+
+## Advanced Interpretation Practice
+
+**Duration:** 25 minutes
+
+---
+
+# Classwork 3: Interpretation Deep Dive
+
+Open: `classwork_3_advanced_interpretation/`
+
+**Your tasks:**
+
+1. Create partial regression plots for a new dataset
+
+2. Calculate and interpret standardized coefficients
+
+3. Compare statistical vs. practical significance
+
+4. Generate confidence and prediction intervals
+
+5. Create an executive summary with effect sizes
+
+6. Discuss: Which predictor matters most and why?
+
+**Template:** `template.Rmd`
+
+---
+
+# Classwork Instructions
+
+**Dataset:** `store_performance.csv`
+
+- 200 stores, 5 predictors
+- Goal: Understand drivers of quarterly profit
+
+**Key questions to answer:**
+
+1. Which variables have large effects?
+2. Which are statistically significant but trivial?
+3. For a new store with specific characteristics, what's the predicted profit range?
+4. What should the VP of Operations prioritize?
+
+**Deliverable:** 2-page memo with visualizations
+
+---
+
+---
+class: center, middle
+
+# Part 12: Model Selection &amp; Comparison
+## Choosing the Right Level of Complexity
+
+---
+
+# The Model Selection Dilemma
+
+**Scenario:**
+
+You have 10 potential predictors for sales. Should you use:
+
+- **All 10?** (Complex, might overfit)
+- **Just 1-2?** (Simple, might underfit)
+- **Something in between?**
+
+**How do we decide systematically?**
+
+---
+
+# Three Competing Goals
+
+**1. Goodness of Fit**
+- Model should capture patterns in data
+- Measured by R², RMSE
+
+**2. Parsimony**
+- Model should be simple
+- Easier to interpret, maintain, explain
+
+**3. Generalization**
+- Model should work on new data
+- True test of predictive value
+
+**The challenge: These goals conflict!**
+
+---
+
+# The Overfitting Problem
+&lt;img src="slides_files/figure-html/unnamed-chunk-58-1.png" style="display: block; margin: auto;" /&gt;
+
+**Complex model fits training data perfectly but will fail on new data**
+
+---
+
+# Training vs. Test Performance
+&lt;img src="slides_files/figure-html/unnamed-chunk-59-1.png" style="display: block; margin: auto;" /&gt;
+
+**Optimal complexity: Where test error is minimized**
+
+---
+class: center, middle
+
+# Nested Model Testing
+
+---
+
+# What Are Nested Models?
+
+**Definition:** Model A is nested in Model B if A is a special case of B.
+
+**Example:**
+
+**Model 1 (Simple):** `sales ~ advertising`
+
+**Model 2 (Complex):** `sales ~ advertising + store_size`
+
+Model 1 is nested in Model 2 (set `store_size` coefficient to 0)
+
+---
+
+# The Question
+
+**Statistical question:**
+
+*"Does adding store_size significantly improve model fit beyond advertising alone?"*
+
+**Business question:**
+
+*"Is it worth the effort to collect and maintain store size data?"*
+
+**Test:** Nested F-test
+
+---
+
+# Nested F-Test: The Logic
+
+**Intuition:**
+
+- Complex model always fits better (more parameters)
+- Question: Is the improvement more than random chance?
+
+**Hypotheses:**
+
+- H₀: Simple model is adequate
+- H₁: Complex model significantly better
+
+**Test statistic:**
+
+`$$F = \frac{(RSS_{simple} - RSS_{complex}) / (p_{complex} - p_{simple})}{RSS_{complex} / (n - p_{complex} - 1)}$$`
+
+---
+
+# Example: Adding Store Size
+
+``` r
+# Fit nested models
+model_simple &lt;- lm(sales ~ google_spend + facebook_spend, 
+                   data = marketing_data)
+
+model_complex &lt;- lm(sales ~ google_spend + facebook_spend + email_spend, 
+                    data = marketing_data)
+
+# Compare with F-test
+anova(model_simple, model_complex)
+```
+
+```
+## Analysis of Variance Table
+## 
+## Model 1: sales ~ google_spend + facebook_spend
+## Model 2: sales ~ google_spend + facebook_spend + email_spend
+##   Res.Df   RSS Df Sum of Sq      F    Pr(&gt;F)    
+## 1     97 21504                                  
+## 2     96 18703  1    2800.4 14.374 0.0002618 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+---
+
+# Interpreting the F-Test
+
+```
+## Analysis of Variance Table
+## 
+## Model 1: sales ~ google_spend + facebook_spend
+## Model 2: sales ~ google_spend + facebook_spend + email_spend
+##   Res.Df   RSS Df Sum of Sq      F    Pr(&gt;F)    
+## 1     97 21504                                  
+## 2     96 18703  1    2800.4 14.374 0.0002618 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+**Interpretation:**
+
+- F-statistic: 14.37
+- P-value: 0.000262
+
+**Conclusion:** 
+
+Adding `email_spend` significantly improves fit. The complex model is justified.
+
+---
+
+# Sequential Model Building
+
+**Strategy:** Add variables one at a time, test each addition
+
+``` r
+# Start with intercept only
+model_0 &lt;- lm(sales ~ 1, data = marketing_data)
+
+# Add google_spend
+model_1 &lt;- lm(sales ~ google_spend, data = marketing_data)
+anova(model_0, model_1)
+```
+
+```
+## Analysis of Variance Table
+## 
+## Model 1: sales ~ 1
+## Model 2: sales ~ google_spend
+##   Res.Df    RSS Df Sum of Sq     F    Pr(&gt;F)    
+## 1     99 144114                                 
+## 2     98  56111  1     88004 153.7 &lt; 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+``` r
+# Add facebook_spend
+model_2 &lt;- lm(sales ~ google_spend + facebook_spend, data = marketing_data)
+anova(model_1, model_2)
+```
+
+```
+## Analysis of Variance Table
+## 
+## Model 1: sales ~ google_spend
+## Model 2: sales ~ google_spend + facebook_spend
+##   Res.Df   RSS Df Sum of Sq      F    Pr(&gt;F)    
+## 1     98 56111                                  
+## 2     97 21504  1     34607 156.11 &lt; 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+``` r
+# Add email_spend
+model_3 &lt;- lm(sales ~ google_spend + facebook_spend + email_spend, 
+              data = marketing_data)
+anova(model_2, model_3)
+```
+
+```
+## Analysis of Variance Table
+## 
+## Model 1: sales ~ google_spend + facebook_spend
+## Model 2: sales ~ google_spend + facebook_spend + email_spend
+##   Res.Df   RSS Df Sum of Sq      F    Pr(&gt;F)    
+## 1     97 21504                                  
+## 2     96 18703  1    2800.4 14.374 0.0002618 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+---
+
+# Incremental R² Contribution
+&lt;table class="table table-striped" style="font-size: 14px; margin-left: auto; margin-right: auto;"&gt;
+&lt;caption style="font-size: initial !important;"&gt;Sequential Model Building&lt;/caption&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt; Model &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; R² &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Incremental R² &lt;/th&gt;
+   &lt;th style="text-align:left;"&gt; F-test p-value &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Intercept only &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.000 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; NA &lt;/td&gt;
+   &lt;td style="text-align:left;"&gt; NA &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; + Google &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.611 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.611 &lt;/td&gt;
+   &lt;td style="text-align:left;"&gt; &amp;lt;0.001 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; + Facebook &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.851 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.240 &lt;/td&gt;
+   &lt;td style="text-align:left;"&gt; &amp;lt;0.001 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; + Email &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.870 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.019 &lt;/td&gt;
+   &lt;td style="text-align:left;"&gt; &amp;lt;0.001 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+**Each addition provides significant improvement**
+
+---
+
+# Business Interpretation
+
+**For the CMO:**
+
+*"We started with no predictors (baseline). Adding Google Ads explains 67% of sales variation—huge impact. Adding Facebook explains an additional 15%—also valuable. Adding Email explains only 2% more—marginal benefit."*
+
+*"Recommendation: Definitely track Google and Facebook. Email tracking is lower priority unless cost is negligible."*
+
+---
+class: center, middle
+
+# Information Criteria
+
+---
+
+# The Problem with R²
+
+**R² always increases** when you add variables.
+
+Even random noise increases R²!
+
+**We need a metric that penalizes complexity**
+
+Enter: Information Criteria
+
+---
+
+# Three Common Criteria
+
+**1. AIC (Akaike Information Criterion)**
+
+`$$AIC = n \ln(RSS/n) + 2k$$`
+
+**2. BIC (Bayesian Information Criterion)**
+
+`$$BIC = n \ln(RSS/n) + k \ln(n)$$`
+
+**3. Mallows' Cp**
+
+`$$C_p = \frac{RSS}{s^2} + 2k - n$$`
+
+**All include:** Goodness of fit + Complexity penalty
+
+**Lower values = better models**
+
+---
+
+# AIC: Prediction Focus
+
+**Philosophy:** Balance fit and complexity for prediction
+
+**Penalty:** 2k (mild, favors slightly larger models)
+
+**Use when:** 
+- Primary goal is prediction accuracy
+- You want flexible models
+- Sample size is moderate to large
+
+**Estimates:** Out-of-sample prediction error
+
+---
+
+# BIC: Parsimony Focus
+
+**Philosophy:** Identify the "true" model
+
+**Penalty:** k ln(n) (stronger penalty as n grows)
+
+**Use when:**
+- Primary goal is explanation/interpretation
+- You want simpler, more robust models
+- Scientific context (causal inference)
+
+**Often selects smaller models than AIC**
+
+---
+
+# Calculating Information Criteria
+
+``` r
+# For our marketing models
+AIC(model_simple, model_complex)
+```
+
+```
+##               df      AIC
+## model_simple   4 828.8683
+## model_complex  5 816.9156
+```
+
+``` r
+BIC(model_simple, model_complex)
+```
+
+```
+##               df      BIC
+## model_simple   4 839.2890
+## model_complex  5 829.9414
+```
+
+**Both prefer the complex model** (lower values)
+
+**But:** AIC and BIC can disagree with larger model sets
+
+---
+
+# Comparing Multiple Models
+
+``` r
+# Create several candidate models
+model_1 &lt;- lm(sales ~ google_spend, data = marketing_data)
+model_2 &lt;- lm(sales ~ google_spend + facebook_spend, data = marketing_data)
+model_3 &lt;- lm(sales ~ google_spend + facebook_spend + email_spend, 
+              data = marketing_data)
+
+# Compare all at once
+AIC(model_1, model_2, model_3)
+```
+
+```
+##         df      AIC
+## model_1  3 922.7791
+## model_2  4 828.8683
+## model_3  5 816.9156
+```
+
+---
+
+# Visualizing Model Comparison
+&lt;img src="slides_files/figure-html/unnamed-chunk-66-1.png" style="display: block; margin: auto;" /&gt;
+
+**Both AIC and BIC prefer the full model**
+
+---
+
+# Adjusted R²
+
+**Problem with R²:** Always increases with more variables
+
+**Solution:** Penalize for number of parameters
+
+`$$R^2_{adj} = 1 - \frac{(1-R^2)(n-1)}{n-p-1}$$`
+
+**Interpretation:** Proportion of variance explained, adjusted for model complexity
+
+---
+
+# Adjusted R² Comparison
+
+``` r
+# Compare R² and Adjusted R²
+comparison_r2 &lt;- tibble(
+  Model = model_names,
+  `R²` = sapply(models_list, function(m) summary(m)$r.squared),
+  `Adjusted R²` = sapply(models_list, function(m) summary(m)$adj.r.squared),
+  `Difference` = `R²` - `Adjusted R²`
+)
+
+kable(comparison_r2, digits = 3,
+      caption = "R² vs. Adjusted R²") %&gt;%
+  kable_styling(bootstrap_options = "striped", font_size = 14)
+```
+
+&lt;table class="table table-striped" style="font-size: 14px; margin-left: auto; margin-right: auto;"&gt;
+&lt;caption style="font-size: initial !important;"&gt;R² vs. Adjusted R²&lt;/caption&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt; Model &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; R² &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Adjusted R² &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; Difference &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Google only &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.611 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.607 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.004 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Google + Facebook &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.851 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.848 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.003 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; All three &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.870 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.866 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.004 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+**Adjusted R² doesn't increase as much—accounts for added complexity**
+
+---
+class: center, middle
+
+# Cross-Validation
+
+---
+
+# The Gold Standard
+
+**Problem with all previous methods:**
+
+Still using training data to evaluate (even with penalties)
+
+**Solution:**
+
+Evaluate on truly held-out data through **cross-validation**
+
+---
+
+# K-Fold Cross-Validation
+
+**Algorithm:**
+
+1. Split data into K folds (typically K=5 or K=10)
+
+2. For each fold:
+   - Train model on other K-1 folds
+   - Test on this fold
+   - Record error
+
+3. Average the K test errors
+
+**Result:** Honest estimate of out-of-sample performance
+
+---
+
+# Visual: 5-Fold CV
+&lt;img src="slides_files/figure-html/unnamed-chunk-68-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Implementing CV in R
+
+``` r
+library(caret)
+
+# Define CV method
+train_control &lt;- trainControl(
+  method = "cv",
+  number = 10,  # 10-fold CV
+  savePredictions = TRUE
+)
+
+# Train model with CV
+cv_model &lt;- train(
+  sales ~ google_spend + facebook_spend + email_spend,
+  data = marketing_data,
+  method = "lm",
+  trControl = train_control
+)
+
+cv_model
+```
+
+```
+## Linear Regression 
+## 
+## 100 samples
+##   3 predictor
+## 
+## No pre-processing
+## Resampling: Cross-Validated (10 fold) 
+## Summary of sample sizes: 90, 90, 89, 89, 91, 90, ... 
+## Resampling results:
+## 
+##   RMSE      Rsquared   MAE    
+##   14.11865  0.8876826  11.4512
+## 
+## Tuning parameter 'intercept' was held constant at a value of TRUE
+```
+
+---
+
+# CV Results
+
+``` r
+# Extract CV performance
+cv_results &lt;- cv_model$resample
+
+# Summary statistics
+cat("Mean CV RMSE:", mean(cv_results$RMSE), "\n")
+```
+
+```
+## Mean CV RMSE: 14.11865
+```
+
+``` r
+cat("SD of CV RMSE:", sd(cv_results$RMSE), "\n")
+```
+
+```
+## SD of CV RMSE: 3.166507
+```
+
+``` r
+cat("Mean CV R²:", mean(cv_results$Rsquared), "\n")
+```
+
+```
+## Mean CV R²: 0.8876826
+```
+
+**This is our honest estimate of performance on new data**
+
+---
+
+# Comparing Models with CV
+
+``` r
+# Compare three models using CV
+model_formulas &lt;- list(
+  "Model 1" = sales ~ google_spend,
+  "Model 2" = sales ~ google_spend + facebook_spend,
+  "Model 3" = sales ~ google_spend + facebook_spend + email_spend
+)
+
+cv_comparison &lt;- lapply(model_formulas, function(formula) {
+  train(formula, data = marketing_data, method = "lm", 
+        trControl = train_control)
+})
+
+# Extract RMSE
+cv_rmse &lt;- sapply(cv_comparison, function(m) mean(m$resample$RMSE))
+cv_r2 &lt;- sapply(cv_comparison, function(m) mean(m$resample$Rsquared))
+
+tibble(
+  Model = names(model_formulas),
+  `CV RMSE` = cv_rmse,
+  `CV R²` = cv_r2
+) %&gt;%
+  kable(digits = 3, caption = "Cross-Validation Comparison") %&gt;%
+  kable_styling(bootstrap_options = "striped", font_size = 14)
+```
+
+&lt;table class="table table-striped" style="font-size: 14px; margin-left: auto; margin-right: auto;"&gt;
+&lt;caption style="font-size: initial !important;"&gt;Cross-Validation Comparison&lt;/caption&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt; Model &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; CV RMSE &lt;/th&gt;
+   &lt;th style="text-align:right;"&gt; CV R² &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Model 1 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 23.971 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.663 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Model 2 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 14.702 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.860 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Model 3 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 14.070 &lt;/td&gt;
+   &lt;td style="text-align:right;"&gt; 0.889 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+---
+
+# Visualizing CV Performance
+&lt;img src="slides_files/figure-html/unnamed-chunk-72-1.png" style="display: block; margin: auto;" /&gt;
+
+**Model 3 has lowest median RMSE and reasonable variance**
+
+---
+class: center, middle
+
+# Bias-Variance Tradeoff
+
+---
+
+# The Fundamental Tradeoff
+
+**Total Error = Bias² + Variance + Irreducible Error**
+
+**Bias:** Error from wrong assumptions (underfitting)
+
+**Variance:** Error from sensitivity to training data (overfitting)
+
+**Cannot minimize both simultaneously**
+
+---
+
+# Visualizing Bias-Variance
+&lt;img src="slides_files/figure-html/unnamed-chunk-73-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+# Simple Models (High Bias)
+
+**Characteristics:**
+- Underfit the data
+- Miss important patterns
+- Low variance (consistent predictions)
+- Poor performance on both training and test data
+
+**Example:** Linear model for clearly non-linear relationship
+
+---
+
+# Complex Models (High Variance)
+
+**Characteristics:**
+- Overfit the data
+- Capture noise as signal
+- High variance (predictions change with different training sets)
+- Great training performance, poor test performance
+
+**Example:** High-degree polynomial for linear relationship
+
+---
+
+# Finding the Sweet Spot
+
+**In practice:**
+
+1. **Start simple:** Fit baseline model
+
+2. **Add complexity gradually:** Test each addition
+
+3. **Monitor test performance:** Use CV or holdout
+
+4. **Stop when test error increases:** Don't chase training error
+
+5. **Prefer simpler models:** When performance is similar
+
+---
+
+# Big Data Context
+
+**At scale:**
+
+- **CV becomes expensive:** 10-fold CV on 1B rows = 10 training runs
+- **Alternative:** Single holdout set (still large enough to be reliable)
+- **Time-based splits:** For temporal data (train on past, test on future)
+- **Online evaluation:** A/B testing in production
+
+**Trade-off:** Thoroughness vs. computational cost**
+
+---
+
+# Model Selection Checklist
+
+**Before deploying a model:**
+
+- ☐ Compare to simpler baseline
+- ☐ Test nested models with F-tests
+- ☐ Calculate AIC/BIC for multiple candidates
+- ☐ Run k-fold cross-validation
+- ☐ Check for overfitting (train vs. test gap)
+- ☐ Verify performance on final holdout set
+- ☐ Consider business constraints (data cost, interpretability)
+- ☐ Document selection rationale
+
+---
+
+# Case Study: Netflix
+
+**Challenge:** Recommend movies to 200M+ users
+
+**Model selection considerations:**
+
+1. **Accuracy:** RMSE on held-out ratings
+2. **Diversity:** Don't just recommend blockbusters
+3. **Novelty:** Introduce users to new content
+4. **Computation:** Must run in real-time
+5. **Explainability:** "Because you watched X"
+
+**Winner:** Ensemble of models, not single "best" model
+
+---
+
+# Ethical Considerations
+
+**Simpler models are more auditable:**
+
+- Financial lending: Can you explain rejections?
+- Healthcare: Can doctors understand predictions?
+- Criminal justice: Can defendants contest risk scores?
+
+**Complex models may perform better but:**
+- Harder to detect bias
+- Difficult to explain to stakeholders
+- Challenge regulatory compliance
+
+**Sometimes simplicity is an ethical requirement**
+
+---
+class: inverse, center, middle
+
+# 🎯 CLASSWORK TIME
+
+## Model Selection Practice
+
+**Duration:** 25 minutes
+
+---
+
+# Classwork 4: Model Selection
+
+Open: `classwork_4_model_selection/`
+
+**Your tasks:**
+
+1. Fit multiple candidate models (varying complexity)
+
+2. Compare using nested F-tests
+
+3. Calculate AIC, BIC, Adjusted R² for each
+
+4. Perform 10-fold cross-validation
+
+5. Select final model and justify your choice
+
+6. Discuss bias-variance considerations
+
+**Template:** `template.Rmd`
+
+---
+
+# Classwork Instructions
+
+**Dataset:** `housing_prices.csv`
+
+- 300 houses with 8 potential predictors
+- Goal: Predict house prices
+
+**Key questions:**
+
+1. Which predictors should be included?
+2. Does AIC/BIC agree with CV?
+3. Is there evidence of overfitting?
+4. What's your final recommendation?
+
+**Deliverable:** Model selection report with justification
+
+---
+
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:9",
+"slideNumberFormat": "Slide %current%"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// add `data-at-shortcutkeys` attribute to <body> to resolve conflicts with JAWS
+// screen reader (see PR #262)
+(function(d) {
+  let res = {};
+  d.querySelectorAll('.remark-help-content table tr').forEach(tr => {
+    const t = tr.querySelector('td:nth-child(2)').innerText;
+    tr.querySelectorAll('td:first-child .key').forEach(key => {
+      const k = key.innerText;
+      if (/^[a-z]$/.test(k)) res[k] = t;  // must be a single letter (key)
+    });
+  });
+  d.body.setAttribute('data-at-shortcutkeys', JSON.stringify(res));
+})(document);
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

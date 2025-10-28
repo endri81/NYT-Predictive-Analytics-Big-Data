@@ -1,0 +1,294 @@
+---
+title: "Classwork 1: Gradient Descent Implementation"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+# Load required libraries
+library(tidyverse)
+library(gridExtra)
+
+# Source utilities
+source('../../../utilities/visualization_themes.R')
+theme_set(course_theme())
+course_colors <- c('#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A994E')
+```
+
+# Task 1: Implement Gradient Descent
+
+## Load the Data
+```{r}
+# Load Facebook marketing data
+facebook_data <- read_csv('data/facebook_marketing.csv')
+
+# Preview
+head(facebook_data)
+```
+
+## Implement Gradient Descent Function
+```{r}
+gradient_descent_facebook <- function(X, y, learning_rate = 0.001, n_iterations = 1000) {
+  
+  # TODO: Initialize parameters
+  # Hint: Use rnorm() for small random values
+  beta <- ___
+  
+  # TODO: Create vector to track loss history
+  loss_history <- ___
+  
+  for (iter in 1:n_iterations) {
+    # TODO: Compute predictions
+    y_pred <- ___
+    
+    # TODO: Compute errors (residuals)
+    errors <- ___
+    
+    # TODO: Compute gradients
+    # Remember: gradient = -2 * X^T * errors / n
+    gradient <- ___
+    
+    # TODO: Update parameters
+    beta <- ___
+    
+    # TODO: Record loss (sum of squared errors)
+    loss_history[iter] <- ___
+  }
+  
+  return(list(beta = beta, loss_history = loss_history))
+}
+```
+
+## Run Your Gradient Descent
+```{r}
+# Prepare data matrix (add intercept column)
+X <- cbind(1, facebook_data$facebook_spend)
+y <- facebook_data$sales
+
+# Run gradient descent
+set.seed(42)
+gd_result <- gradient_descent_facebook(X, y, learning_rate = 0.001, n_iterations = 1000)
+
+# Extract parameters
+beta_0 <- gd_result$beta[1]
+beta_1 <- gd_result$beta[2]
+
+cat(sprintf("Intercept: %.2f\n", beta_0))
+cat(sprintf("Slope: %.2f\n", beta_1))
+```
+
+## Interpret the Results
+
+**Business interpretation:**
+```
+TODO: Write 2-3 sentences interpreting what these parameters mean for the business.
+- What does the intercept represent?
+- What does the slope tell us about Facebook ad ROI?
+- If we increase Facebook spend by $50K, what incremental sales do we expect?
+```
+
+---
+
+# Task 2: Experiment with Learning Rates
+```{r}
+# Test three learning rates
+learning_rates <- c(0.0001, 0.001, 0.01)
+results <- list()
+
+for (lr in learning_rates) {
+  results[[as.character(lr)]] <- gradient_descent_facebook(X, y, 
+                                                           learning_rate = lr, 
+                                                           n_iterations = 1000)
+}
+
+# Plot convergence for each
+convergence_data <- map_dfr(names(results), function(lr) {
+  tibble(
+    iteration = 1:length(results[[lr]]$loss_history),
+    loss = results[[lr]]$loss_history,
+    learning_rate = paste("α =", lr)
+  )
+})
+
+ggplot(convergence_data, aes(x = iteration, y = loss, color = learning_rate)) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = course_colors[1:3]) +
+  labs(
+    title = "Convergence Speed vs. Learning Rate",
+    subtitle = "Different learning rates affect optimization speed",
+    x = "Iteration",
+    y = "Loss (Sum of Squared Errors)",
+    color = "Learning Rate"
+  ) +
+  scale_y_continuous(labels = scales::comma)
+```
+
+**Observations:**
+```
+TODO: Answer these questions based on your plot:
+1. Which learning rate converges fastest?
+2. Which is most stable?
+3. What happens if you try α = 0.1? (Try it!)
+```
+
+---
+
+# Task 3: Visualize the Loss Surface
+```{r}
+# Create grid of parameter values
+beta_0_range <- seq(0, 100, length.out = 100)
+beta_1_range <- seq(0, 4, length.out = 100)
+
+# TODO: Calculate loss for each (β₀, β₁) combination
+# Hint: Use expand.grid() and map over rows
+loss_grid <- expand.grid(
+  beta_0 = beta_0_range,
+  beta_1 = beta_1_range
+) %>%
+  rowwise() %>%
+  mutate(
+    # TODO: Calculate loss for this parameter combination
+    loss = sum((y - (beta_0 + beta_1 * X[, 2]))^2)
+  ) %>%
+  ungroup()
+
+# Find optimal point
+optimal <- loss_grid %>% filter(loss == min(loss))
+
+# Plot contours
+ggplot(loss_grid, aes(x = beta_0, y = beta_1, z = loss)) +
+  geom_contour_filled(bins = 15) +
+  geom_point(data = optimal, aes(x = beta_0, y = beta_1),
+             color = "red", size = 5, shape = 4, stroke = 2) +
+  annotate("text", x = optimal$beta_0 + 10, y = optimal$beta_1 + 0.3,
+           label = "Optimal", color = "red", fontface = "bold", size = 5) +
+  scale_fill_viridis_d(option = "plasma") +
+  labs(
+    title = "Loss Surface for Facebook Ad Spend Model",
+    x = expression(beta[0]),
+    y = expression(beta[1])
+  )
+```
+
+**Observation:** What shape is this loss surface? Why does gradient descent work well for this problem?
+
+---
+
+# Task 4: Compare to lm()
+```{r}
+# Run built-in linear regression
+model_builtin <- lm(sales ~ facebook_spend, data = facebook_data)
+
+# Extract coefficients
+builtin_beta <- coef(model_builtin)
+
+# Compare
+comparison <- tibble(
+  Parameter = c("Intercept (β₀)", "Slope (β₁)"),
+  `Your Gradient Descent` = c(beta_0, beta_1),
+  `Built-in lm()` = builtin_beta,
+  `Difference` = builtin_beta - c(beta_0, beta_1)
+)
+
+knitr::kable(comparison, digits = 4, 
+             caption = "Gradient Descent vs. Built-in lm()")
+```
+
+## Timing Comparison
+```{r}
+# Time your gradient descent
+time_gd <- system.time({
+  gradient_descent_facebook(X, y, learning_rate = 0.001, n_iterations = 1000)
+})
+
+# Time lm()
+time_lm <- system.time({
+  lm(sales ~ facebook_spend, data = facebook_data)
+})
+
+cat(sprintf("Gradient Descent: %.4f seconds\n", time_gd["elapsed"]))
+cat(sprintf("Built-in lm():    %.4f seconds\n", time_lm["elapsed"]))
+cat(sprintf("Speedup factor:   %.1fx\n", time_gd["elapsed"] / time_lm["elapsed"]))
+```
+
+**Question:** Why is `lm()` faster?
+```
+TODO: Explain why R's lm() is faster than iterative gradient descent.
+Hint: It uses a closed-form solution (normal equations).
+```
+
+---
+
+# Discussion Questions
+
+## Question 1: Parallelization for Big Data
+
+**How would you parallelize gradient descent across 1000 servers processing 1 billion data points?**
+```
+TODO: Describe the strategy:
+- How is data distributed?
+- What computation happens on each server?
+- How are gradients aggregated?
+- Where is the bottleneck?
+```
+
+## Question 2: Non-Convex Surfaces
+
+**What if the loss surface had multiple local minima?**
+```
+TODO: 
+- Would gradient descent still work?
+- What problems might arise?
+- What techniques help (hint: think neural networks)?
+```
+
+## Question 3: When to Use Gradient Descent
+
+**When would you choose gradient descent over the closed-form solution?**
+```
+TODO: List scenarios where iterative optimization is preferred.
+Examples to consider:
+- Very large datasets
+- Online learning
+- Non-linear models
+```
+
+---
+
+# Bonus: Stochastic Gradient Descent (Optional)
+```{r eval=FALSE}
+# TODO: Implement mini-batch SGD
+sgd_facebook <- function(X, y, learning_rate = 0.001, 
+                        n_iterations = 1000, batch_size = 10) {
+  # Hint: Each iteration, sample batch_size random observations
+  # Compute gradient only on that batch
+  # This approximates the full gradient but is much faster
+}
+
+# Compare SGD vs. full batch gradient descent
+# Plot convergence trajectories
+```
+
+---
+
+# Summary
+
+**What I learned:**
+
+1. 
+2. 
+3. 
+
+**What I found challenging:**
+
+1. 
+
+**Questions for instructor:**
+
+1.
