@@ -1,0 +1,272 @@
+---
+title: "Classwork 2A: Diagnosing Overfitting"
+author: "Your Name Here"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: cosmo
+---
+```{r setup, include=FALSE}
+# Load required libraries
+library(tidyverse)
+library(caret)
+library(car)        # For VIF calculation
+library(corrplot)   # For correlation visualization
+library(kableExtra) # For nice tables
+library(gridExtra)  # For multi-panel plots
+
+# Set options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  fig.width = 10,
+  fig.height = 6
+)
+
+# Custom theme
+theme_set(theme_minimal(base_size = 12))
+```
+
+# Part 1: Initial Model Fitting
+
+## Task 1: Load and Examine Data
+```{r load-data}
+# Load the dataset
+pricing_data <- read.csv("product_features_extended.csv")
+
+# Examine structure
+# YOUR CODE HERE: Use str(), dim(), head(), summary() to explore
+```
+
+**Data Summary:**
+- Number of observations: 
+- Number of features: 
+- Target variable range: 
+
+## Task 2: Train-Test Split
+```{r split-data}
+# Set seed for reproducibility
+set.seed(123)
+
+# Create train/test split (70/30)
+# YOUR CODE HERE: Use sample() or createDataPartition()
+```
+
+**Split Summary:**
+- Training set size: 
+- Testing set size: 
+
+## Task 3: Fit Full Model
+```{r fit-model}
+# Fit linear regression with all 75 features
+# YOUR CODE HERE: Use lm()
+
+# Display model summary (first 20 coefficients only to save space)
+```
+
+## Task 4: Calculate Performance Metrics
+```{r performance-metrics}
+# Generate predictions
+# YOUR CODE HERE: Use predict()
+
+# Calculate RMSE for training set
+# YOUR CODE HERE: RMSE = sqrt(mean((actual - predicted)^2))
+
+# Calculate R² for training set
+# YOUR CODE HERE: Use summary()$r.squared or calculate manually
+
+# Calculate MAE for training set
+# YOUR CODE HERE: MAE = mean(abs(actual - predicted))
+
+# Repeat for testing set
+# YOUR CODE HERE
+
+# Create summary table
+performance_summary <- data.frame(
+  Metric = c("RMSE", "R²", "MAE"),
+  Training = c(train_rmse, train_r2, train_mae),
+  Testing = c(test_rmse, test_r2, test_mae)
+)
+
+# Display results
+performance_summary %>%
+  kable(digits = 3, caption = "Model Performance: Training vs Testing") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Observations:**
+- Write your initial observations about the performance gap here.
+
+---
+
+# Part 2: Overfitting Diagnosis
+
+## Task 5: Actual vs Predicted Plots
+```{r actual-vs-predicted}
+# Create dataframe for plotting
+# YOUR CODE HERE: Combine actual and predicted values with dataset labels
+
+# Create 2-panel plot
+# YOUR CODE HERE: Use ggplot with facet_wrap()
+# Include:
+# - geom_point() for scatter
+# - geom_abline() for reference line
+# - Appropriate colors for train vs test
+# - Clear titles and labels
+```
+
+**Visual Diagnosis:**
+- Describe the pattern you see in training plot:
+- Describe the pattern you see in testing plot:
+- What does this tell you about model performance?
+
+## Task 6: Performance Comparison Bar Chart
+```{r performance-barplot}
+# Reshape data for plotting
+# YOUR CODE HERE: Create long format suitable for grouped bar chart
+
+# Create grouped bar chart
+# YOUR CODE HERE: Use ggplot with geom_bar()
+```
+
+## Task 7: Calculate Performance Degradation
+```{r degradation-metrics}
+# Calculate percentage increase in RMSE
+rmse_increase_pct <- # YOUR FORMULA HERE
+
+# Calculate absolute decrease in R²
+r2_decrease <- # YOUR FORMULA HERE
+
+# Display degradation summary
+degradation_summary <- data.frame(
+  Metric = c("RMSE Increase (%)", "R² Decrease (abs)"),
+  Value = c(rmse_increase_pct, r2_decrease)
+)
+
+degradation_summary %>%
+  kable(digits = 2, caption = "Performance Degradation") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+**Overfitting Severity:**
+- Is this model overfit? (Yes/No): 
+- Evidence:
+
+---
+
+# Part 3: Multicollinearity Analysis
+
+## Task 8: Correlation Matrix
+```{r correlation-matrix}
+# Compute correlation matrix for all features (exclude target variable)
+# YOUR CODE HERE: Use cor()
+
+# Find dimensions
+# YOUR CODE HERE
+```
+
+## Task 9: Identify High Correlations
+```{r high-correlations}
+# Find feature pairs with correlation > 0.85
+# YOUR CODE HERE: 
+# Hint: Set diagonal to NA, then find indices where abs(cor) > 0.85
+
+# Create a dataframe of high correlation pairs
+# YOUR CODE HERE
+
+# Display results
+# YOUR CODE HERE: Use kable()
+```
+
+**High Correlation Findings:**
+- Number of feature pairs with |r| > 0.85: 
+- Example of highly correlated features:
+
+## Task 10: Correlation Heatmap
+```{r correlation-heatmap, fig.height=8, fig.width=8}
+# Create correlation heatmap for first 20 features
+# YOUR CODE HERE: Use corrplot() or ggplot with geom_tile()
+```
+
+**Heatmap Insights:**
+- Which feature groups show high correlation?
+- What does this mean for our model coefficients?
+
+## Task 11: Variance Inflation Factors
+```{r vif-analysis}
+# Calculate VIF for first 15 features
+# Note: VIF for all 75 features is computationally expensive
+# Subset the model first
+# YOUR CODE HERE: 
+# 1. Create subset of data with first 15 features + target
+# 2. Fit new model with just these features
+# 3. Calculate VIF using car::vif()
+
+# Create VIF summary
+# YOUR CODE HERE
+
+# Identify problematic features (VIF > 10)
+# YOUR CODE HERE
+```
+
+**VIF Diagnosis:**
+- Number of features with VIF > 10: 
+- These features indicate: 
+
+---
+
+# Part 4: Professional Communication
+
+## Memo to VP of Pricing
+```{r memo, echo=FALSE, results='asis'}
+cat("
+**TO:** VP of Pricing  
+**FROM:** [Your Name], Data Science Team  
+**DATE:** ", format(Sys.Date(), "%B %d, %Y"), "  
+**RE:** Diagnostic Analysis of Product Pricing Model Failure
+
+---
+
+### Problem Statement
+[YOUR TEXT HERE: What went wrong? 2-3 sentences]
+
+### Evidence
+[YOUR TEXT HERE: Specific metrics. Use numbers from your analysis. 3-4 sentences]
+
+### Root Causes
+[YOUR TEXT HERE: Why did overfitting occur? Mention sample size, feature count, multicollinearity. 3-4 sentences]
+
+### Business Impact
+[YOUR TEXT HERE: What could happen if this model deploys? Be specific about pricing errors and revenue impact. 2-3 sentences]
+
+### Recommendation
+[YOUR TEXT HERE: What approach should we take? Preview regularization as solution. 2-3 sentences]
+
+---
+", sep = "")
+```
+
+---
+
+# Summary and Reflection
+
+**Key Learnings:**
+1. 
+2. 
+3. 
+
+**Questions for Lecture:**
+1. 
+2. 
+
+---
+
+# Session Info
+```{r session-info}
+sessionInfo()
+```

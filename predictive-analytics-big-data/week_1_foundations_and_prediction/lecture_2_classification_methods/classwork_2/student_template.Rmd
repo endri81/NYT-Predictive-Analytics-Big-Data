@@ -1,0 +1,373 @@
+---
+title: "Classwork 2: Building Ridge Models"
+author: "Your Name Here"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: cosmo
+---
+```{r setup, include=FALSE}
+# Load required libraries
+library(tidyverse)
+library(glmnet)
+library(kableExtra)
+library(gridExtra)
+
+# Set options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = 'center',
+  fig.width = 10,
+  fig.height = 6
+)
+
+# Custom theme
+theme_set(theme_minimal(base_size = 12))
+```
+
+# Part 1: Data Preparation
+
+## Task 1: Load Data and Handle Missing Values
+```{r load-data}
+# Load the dataset
+pricing_data <- read.csv("../data/product_features_extended.csv")
+
+# Check data structure
+# YOUR CODE HERE: dim(), str(), summary()
+
+# Handle missing values with median imputation
+# YOUR CODE HERE: Use a loop or apply function to impute medians
+```
+
+**Data Summary:**
+- Number of observations: 
+- Number of features: 
+- Missing values handled: [Yes/No]
+
+## Task 2: Train-Test Split
+```{r split-data}
+# Set seed for reproducibility (same as Classwork 1)
+set.seed(123)
+
+# Create 70/30 train-test split
+# YOUR CODE HERE: Use createDataPartition() or sample()
+```
+
+**Split Summary:**
+- Training observations: 
+- Testing observations: 
+
+## Task 3: Prepare Matrix Format for glmnet
+```{r prepare-matrices}
+# glmnet requires matrix format, not data frames
+
+# Create design matrix for training set (remove intercept with -1)
+# YOUR CODE HERE: X_train <- model.matrix(...)
+
+# Extract target variable for training
+# YOUR CODE HERE: y_train <- ...
+
+# Repeat for testing set
+# YOUR CODE HERE: X_test <- ...
+# YOUR CODE HERE: y_test <- ...
+
+# Verify dimensions
+cat("Training matrix dimensions:", dim(X_train), "\n")
+cat("Testing matrix dimensions:", dim(X_test), "\n")
+```
+
+**Why Matrix Format?** `glmnet` is optimized for matrix operations and requires this format for computational efficiency.
+
+---
+
+# Part 2: Ridge Regression Implementation
+
+## Task 4: Fit Ridge Model
+```{r fit-ridge}
+# Fit Ridge regression with automatic lambda sequence
+# YOUR CODE HERE: 
+# ridge_model <- glmnet(x = ..., y = ..., alpha = ..., standardize = ...)
+
+# Print model summary
+# YOUR CODE HERE
+```
+
+## Task 5: Examine Model Object
+```{r examine-model}
+# Number of lambda values tested
+# YOUR CODE HERE
+
+# Range of lambda values
+# YOUR CODE HERE
+
+# Number of non-zero coefficients (should be all 75 for Ridge)
+# YOUR CODE HERE
+```
+
+**Observations:**
+- Lambda values tested: 
+- Lambda range: 
+- Non-zero coefficients: (should be all 75 for Ridge)
+
+## Task 6: Visualize Regularization Path
+```{r regularization-path, fig.height=6}
+# Plot coefficient paths as lambda increases
+# YOUR CODE HERE: plot(ridge_model, xvar = "lambda", ...)
+```
+
+**Interpretation:**
+- As lambda increases, coefficients... [describe what you observe]
+- Do any coefficients reach exactly zero? [Yes/No and why]
+- Which coefficients shrink fastest? [describe pattern]
+
+---
+
+# Part 3: Cross-Validation for Optimal Lambda
+
+## Task 7: Perform 10-Fold Cross-Validation
+```{r cross-validation}
+# Set seed for reproducibility
+set.seed(42)
+
+# Perform cross-validation
+# YOUR CODE HERE:
+# ridge_cv <- cv.glmnet(x = ..., y = ..., alpha = 0, nfolds = 10, type.measure = "mse")
+```
+
+## Task 8: Plot CV Results and Extract Optimal Lambdas
+```{r cv-plot, fig.height=5}
+# Plot cross-validation curve
+# YOUR CODE HERE: plot(ridge_cv)
+
+# Extract optimal lambda values
+# YOUR CODE HERE: lambda_min <- ...
+# YOUR CODE HERE: lambda_1se <- ...
+
+cat("Lambda min:", lambda_min, "\n")
+cat("Lambda 1se:", lambda_1se, "\n")
+```
+
+**Observations:**
+- Optimal lambda (min CV error): 
+- Conservative lambda (1se rule): 
+- Which would you choose and why?
+
+## Task 9: Extract CV Error
+```{r cv-error}
+# Get minimum CV MSE
+# YOUR CODE HERE
+
+# Convert to RMSE
+# YOUR CODE HERE
+
+cat("Minimum CV MSE:", "...", "\n")
+cat("Corresponding RMSE:", "...", "\n")
+```
+
+---
+
+# Part 4: Model Evaluation
+
+## Task 10: Generate Predictions
+```{r ridge-predictions}
+# Predictions using lambda.min
+# YOUR CODE HERE: ridge_pred_train <- predict(ridge_cv, newx = X_train, s = "lambda.min")
+# YOUR CODE HERE: ridge_pred_test <- ...
+```
+
+## Task 11: Calculate Performance Metrics
+```{r ridge-performance}
+# Training metrics
+# YOUR CODE HERE: Calculate RMSE and R² for training
+
+# Testing metrics
+# YOUR CODE HERE: Calculate RMSE and R² for testing
+
+# Create summary table
+ridge_metrics <- data.frame(
+  Dataset = c("Training", "Testing"),
+  RMSE = c(ridge_train_rmse, ridge_test_rmse),
+  R_squared = c(ridge_train_r2, ridge_test_r2)
+)
+
+ridge_metrics %>%
+  kable(digits = 3, caption = "Ridge Model Performance") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Task 12: Compare with OLS from Classwork 1
+```{r compare-models}
+# Enter your OLS metrics from Classwork 1
+ols_train_rmse <- # YOUR VALUE HERE
+ols_test_rmse <- # YOUR VALUE HERE
+ols_train_r2 <- # YOUR VALUE HERE
+ols_test_r2 <- # YOUR VALUE HERE
+
+# Create comparison table
+comparison <- data.frame(
+  Model = rep(c("OLS", "Ridge"), each = 2),
+  Dataset = rep(c("Training", "Testing"), 2),
+  RMSE = c(ols_train_rmse, ols_test_rmse, ridge_train_rmse, ridge_test_rmse),
+  R_squared = c(ols_train_r2, ols_test_r2, ridge_train_r2, ridge_test_r2)
+)
+
+comparison %>%
+  kable(digits = 3, caption = "Model Comparison: OLS vs Ridge") %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  row_spec(3:4, bold = TRUE, background = "#E8F5E9")
+```
+
+**Performance Improvement:**
+```{r improvement-calc}
+# Calculate train-test gap for both models
+ols_gap <- # YOUR CALCULATION
+ridge_gap <- # YOUR CALCULATION
+
+# Calculate percentage improvement
+gap_improvement <- # YOUR CALCULATION
+
+cat("OLS train-test RMSE gap:", round(ols_gap, 2), "\n")
+cat("Ridge train-test RMSE gap:", round(ridge_gap, 2), "\n")
+cat("Gap reduction:", round(gap_improvement, 1), "%\n")
+```
+
+## Task 13: Visualizations
+```{r performance-viz, fig.height=8}
+# Panel 1: Actual vs Predicted for Ridge (Training)
+# YOUR CODE HERE
+
+# Panel 2: Actual vs Predicted for Ridge (Testing)
+# YOUR CODE HERE
+
+# Panel 3: Performance bar chart comparing OLS vs Ridge
+# YOUR CODE HERE
+
+# Combine into single figure using gridExtra::grid.arrange() or facet_wrap()
+```
+
+---
+
+# Part 5: Coefficient Analysis
+
+## Task 14: Extract Ridge Coefficients
+```{r ridge-coefficients}
+# Extract coefficients at optimal lambda
+# YOUR CODE HERE: ridge_coefs <- coef(ridge_cv, s = "lambda.min")
+
+# Convert to data frame for easier manipulation
+# YOUR CODE HERE
+```
+
+## Task 15: Top 10 Features by Importance
+```{r top-features}
+# Identify top 10 features by absolute coefficient magnitude
+# YOUR CODE HERE: Sort by absolute value, take top 10
+
+# Display table
+# YOUR CODE HERE: Use kable()
+```
+
+**Top Features:**
+- Most important feature: 
+- Business interpretation: [What does this feature represent and why might it be important?]
+
+## Task 16: Compare OLS vs Ridge Coefficients
+```{r coef-comparison, fig.height=6}
+# Create comparison visualization for top 10 features
+# YOUR CODE HERE: 
+# - Get OLS coefficients for same features
+# - Create side-by-side bar chart
+# - Show shrinkage effect
+```
+
+**Shrinkage Observations:**
+- Which coefficients shrunk most?
+- Which remained relatively stable?
+- What does this tell you about feature importance?
+
+## Task 17: Average Shrinkage Percentage
+```{r shrinkage-calc}
+# Calculate average percentage shrinkage across all features
+# YOUR CODE HERE:
+# shrinkage_pct <- mean((abs(ols_coefs) - abs(ridge_coefs)) / abs(ols_coefs) * 100)
+
+cat("Average coefficient shrinkage:", "...", "%\n")
+```
+
+---
+
+# Part 6: Business Recommendation
+
+## Task 18: Deployment Readiness Assessment
+```{r deployment-table, echo=FALSE}
+# Create deployment criteria table
+deployment_criteria <- data.frame(
+  Criterion = c("Testing RMSE", "Train-Test RMSE Gap", "Testing R²", "Coefficient Stability"),
+  Threshold = c("< $10K", "< $5K", "> 0.75", "VIF concerns resolved"),
+  Ridge_Result = c(
+    paste0("$", round(ridge_test_rmse, 2), "K"),  # YOUR ACTUAL VALUES
+    paste0("$", round(ridge_gap, 2), "K"),
+    round(ridge_test_r2, 3),
+    "Regularization applied"
+  ),
+  Status = c(
+    ifelse(ridge_test_rmse < 10, "✅ Pass", "❌ Fail"),
+    ifelse(ridge_gap < 5, "✅ Pass", "❌ Fail"),
+    ifelse(ridge_test_r2 > 0.75, "✅ Pass", "❌ Fail"),
+    "✅ Pass"
+  )
+)
+
+deployment_criteria %>%
+  kable(caption = "Deployment Readiness Assessment") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  column_spec(4, bold = TRUE)
+```
+
+## Final Recommendation
+
+**RECOMMENDATION:** [Deploy / Do Not Deploy / Deploy with Monitoring]
+
+**Justification:**
+
+[Write 2-3 sentences explaining your recommendation based on the metrics above. Be specific about which criteria were met/not met and what this means for production deployment.]
+
+**Risks and Monitoring Requirements:**
+
+[Write 1-2 sentences about remaining concerns, limitations, or specific monitoring that should be implemented if deployed.]
+
+---
+
+# Summary and Key Learnings
+
+**What I Learned:**
+
+1. 
+
+2. 
+
+3. 
+
+**Challenges Encountered:**
+
+1. 
+
+2. 
+
+**Questions for Discussion:**
+
+1. 
+
+2. 
+
+---
+
+# Session Info
+```{r session-info}
+sessionInfo()
+```

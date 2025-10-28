@@ -1,0 +1,77 @@
+"Variable","Category","Description","True_Coefficient"
+"optimal_price","Target","Optimal price for the product ($K) - maximizes profit",NA
+"sales_7d","Historical Sales","Various sales metrics over different time periods",2.5
+"sales_14d","Historical Sales","Various sales metrics over different time periods",0
+"sales_30d","Historical Sales","Various sales metrics over different time periods",1.8
+"sales_60d","Historical Sales","Various sales metrics over different time periods",0
+"sales_90d","Historical Sales","Various sales metrics over different time periods",0
+"sales_180d","Historical Sales","Various sales metrics over different time periods",0
+"sales_365d","Historical Sales","Various sales metrics over different time periods",0
+"sales_trend_7d","Historical Sales","Various sales metrics over different time periods",-1.2
+"sales_trend_30d","Historical Sales","Various sales metrics over different time periods",0
+"sales_volatility_7d","Historical Sales","Various sales metrics over different time periods",0
+"sales_volatility_30d","Historical Sales","Various sales metrics over different time periods",0
+"sales_growth_rate_30d","Historical Sales","Various sales metrics over different time periods",0
+"sales_growth_rate_90d","Historical Sales","Various sales metrics over different time periods",0
+"sales_peak_sales_30d","Historical Sales","Various sales metrics over different time periods",0
+"sales_min_sales_30d","Historical Sales","Various sales metrics over different time periods",0
+"competitor_price_1","Competitor Pricing","Prices from different competitors",3.1
+"competitor_price_2","Competitor Pricing","Prices from different competitors",0
+"competitor_price_3","Competitor Pricing","Prices from different competitors",1.5
+"competitor_price_4","Competitor Pricing","Prices from different competitors",0
+"competitor_price_5","Competitor Pricing","Prices from different competitors",0
+"competitor_price_6","Competitor Pricing","Prices from different competitors",0
+"competitor_price_7","Competitor Pricing","Prices from different competitors",0
+"competitor_price_8","Competitor Pricing","Prices from different competitors",0
+"competitor_price_9","Competitor Pricing","Prices from different competitors",0
+"competitor_price_10","Competitor Pricing","Prices from different competitors",0
+"inventory_level","Inventory Metrics","Inventory and supply chain metrics",-0.8
+"inventory_days_in_stock","Inventory Metrics","Inventory and supply chain metrics",0
+"inventory_reorder_point","Inventory Metrics","Inventory and supply chain metrics",0
+"inventory_safety_stock","Inventory Metrics","Inventory and supply chain metrics",0
+"inventory_turnover_rate","Inventory Metrics","Inventory and supply chain metrics",2.2
+"inventory_stockout_count","Inventory Metrics","Inventory and supply chain metrics",0
+"inventory_lead_time","Inventory Metrics","Inventory and supply chain metrics",0
+"inventory_supplier_reliability","Inventory Metrics","Inventory and supply chain metrics",0
+"inventory_warehouse_location","Inventory Metrics","Inventory and supply chain metrics",0
+"inventory_handling_cost","Inventory Metrics","Inventory and supply chain metrics",0
+"customer_rating_avg","Customer Metrics","Customer behavior and satisfaction metrics",1.1
+"customer_rating_count","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_review_count","Customer Metrics","Customer behavior and satisfaction metrics",-1.5
+"customer_return_rate","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_repeat_purchase_rate","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_cart_abandon_rate","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_wishlist_count","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_click_through_rate","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_conversion_rate","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_avg_order_value","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_lifetime_value","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_acquisition_cost","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_satisfaction_score","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_nps_score","Customer Metrics","Customer behavior and satisfaction metrics",0
+"customer_complaint_count","Customer Metrics","Customer behavior and satisfaction metrics",0
+"product_age_days","Product Attributes","Product characteristics and attributes",1.9
+"product_category_rank","Product Attributes","Product characteristics and attributes",0
+"product_brand_strength","Product Attributes","Product characteristics and attributes",-1.1
+"product_quality_score","Product Attributes","Product characteristics and attributes",0
+"product_uniqueness_score","Product Attributes","Product characteristics and attributes",0
+"product_weight","Product Attributes","Product characteristics and attributes",0
+"product_size_index","Product Attributes","Product characteristics and attributes",0
+"product_complexity","Product Attributes","Product characteristics and attributes",0
+"product_warranty_length","Product Attributes","Product characteristics and attributes",0
+"product_certification","Product Attributes","Product characteristics and attributes",0
+"season_index","Seasonality","Seasonal and temporal factors",0
+"season_trend","Seasonality","Seasonal and temporal factors",0
+"season_holiday_proximity","Seasonality","Seasonal and temporal factors",0
+"season_weather_impact","Seasonality","Seasonal and temporal factors",0
+"season_event_impact","Seasonality","Seasonal and temporal factors",0
+"marketing_ad_spend_7d","Marketing","Marketing spend and engagement metrics",1.3
+"marketing_ad_spend_30d","Marketing","Marketing spend and engagement metrics",0
+"marketing_email_open_rate","Marketing","Marketing spend and engagement metrics",0
+"marketing_email_click_rate","Marketing","Marketing spend and engagement metrics",0
+"marketing_social_engagement","Marketing","Marketing spend and engagement metrics",0
+"marketing_influencer_mentions","Marketing","Marketing spend and engagement metrics",0
+"marketing_search_volume","Marketing","Marketing spend and engagement metrics",0
+"marketing_brand_searches","Marketing","Marketing spend and engagement metrics",0
+"marketing_promotion_active","Marketing","Marketing spend and engagement metrics",0
+"marketing_discount_depth","Marketing","Marketing spend and engagement metrics",0

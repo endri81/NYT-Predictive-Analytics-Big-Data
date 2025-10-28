@@ -1,0 +1,436 @@
+---
+title: "Classwork 4: Elastic Net Model Selection"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 5,
+  fig.align = 'center'
+)
+
+# Load required libraries
+library(tidyverse)
+library(glmnet)
+library(knitr)
+library(kableExtra)
+
+# Set theme for visualizations
+theme_set(theme_minimal(base_size = 12))
+course_colors <- c('#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A994E', '#BC4B51')
+```
+
+# Introduction
+
+This analysis implements elastic net regression to predict product prices using 47 potential features. The goal is to identify the optimal balance between L1 (LASSO) and L2 (ridge) regularization using cross-validation, then compare model performance and interpretability across different regularization strategies.
+
+---
+
+# Task 1: Data Preparation
+
+## Load and Examine Data
+
+```{r load_data}
+# Load dataset
+pricing_data <- read.csv("product_pricing.csv")
+
+# Display structure
+str(pricing_data)
+
+# Summary statistics
+summary(pricing_data$price)
+
+# Check for missing values
+sum(is.na(pricing_data))
+```
+
+## Train-Test Split
+
+```{r split_data}
+# Set seed for reproducibility
+set.seed(123)
+
+# Create 70-30 split
+train_idx <- sample(1:nrow(pricing_data), 0.7 * nrow(pricing_data))
+pricing_train <- pricing_data[train_idx, ]
+pricing_test <- pricing_data[-train_idx, ]
+
+# Verify split
+cat("Training observations:", nrow(pricing_train), "\n")
+cat("Test observations:", nrow(pricing_test), "\n")
+cat("Training proportion:", round(nrow(pricing_train) / nrow(pricing_data), 2), "\n")
+```
+
+## Prepare Matrices for glmnet
+
+```{r prepare_matrices}
+# Create model matrices (excluding intercept, glmnet adds it)
+X_train <- model.matrix(price ~ . - 1, data = pricing_train)
+y_train <- pricing_train$price
+
+X_test <- model.matrix(price ~ . - 1, data = pricing_test)
+y_test <- pricing_test$price
+
+# Verify dimensions
+cat("Training matrix dimensions:", dim(X_train), "\n")
+cat("Test matrix dimensions:", dim(X_test), "\n")
+```
+
+---
+
+# Task 2: Alpha Grid Search with Cross-Validation
+
+## Define Alpha Grid
+
+```{r alpha_grid}
+# Define alpha values to test
+alpha_grid <- c(0, 0.25, 0.5, 0.75, 1.0)
+
+# Display grid
+cat("Testing alpha values:", alpha_grid, "\n")
+```
+
+## Fit Models Across Alpha Grid
+
+```{r fit_alpha_grid}
+# Fit cv.glmnet for each alpha
+cv_models <- lapply(alpha_grid, function(a) {
+  cv.glmnet(X_train, y_train, alpha = a, nfolds = 10, type.measure = "mse")
+})
+
+# Name list elements
+names(cv_models) <- paste0("alpha_", alpha_grid)
+```
+
+## Extract CV Results
+
+```{r cv_results}
+# Extract minimum CV error for each alpha
+cv_summary <- data.frame(
+  Alpha = alpha_grid,
+  Min_Lambda = sapply(cv_models, function(m) m$lambda.min),
+  CV_RMSE = sapply(cv_models, function(m) sqrt(min(m$cvm))),
+  Num_Features = sapply(cv_models, function(m) {
+    coefs <- coef(m, s = "lambda.min")
+    sum(coefs[-1, 1] != 0)  # Exclude intercept
+  })
+)
+
+# Display results
+kable(cv_summary, digits = 3, 
+      caption = "Cross-Validation Results Across Alpha Values") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Visualize CV Performance
+
+```{r plot_cv_alpha, fig.height=4}
+ggplot(cv_summary, aes(x = Alpha, y = CV_RMSE)) +
+  geom_line(linewidth = 1.2, color = course_colors[1]) +
+  geom_point(size = 3, color = course_colors[1]) +
+  geom_point(data = cv_summary %>% filter(CV_RMSE == min(CV_RMSE)),
+             size = 5, color = course_colors[3]) +
+  labs(
+    title = "Cross-Validation RMSE Across Alpha Values",
+    subtitle = paste0("Optimal α = ", cv_summary$Alpha[which.min(cv_summary$CV_RMSE)]),
+    x = "Alpha (0 = Ridge, 1 = LASSO)",
+    y = "CV RMSE ($)"
+  )
+```
+
+**Interpretation:** 
+
+<!-- TODO: Write 2-3 sentences interpreting which alpha performed best and why -->
+
+---
+
+# Task 3: Model Comparison
+
+## Extract Optimal Models
+
+```{r optimal_models}
+# Identify optimal alpha
+optimal_alpha <- cv_summary$Alpha[which.min(cv_summary$CV_RMSE)]
+cat("Optimal alpha:", optimal_alpha, "\n\n")
+
+# Extract specific models for comparison
+ridge_model <- cv_models[["alpha_0"]]
+lasso_model <- cv_models[["alpha_1"]]
+elastic_model <- cv_models[[paste0("alpha_", optimal_alpha)]]
+```
+
+## Calculate Performance Metrics
+
+```{r performance_metrics}
+# RMSE function
+rmse <- function(actual, predicted) {
+  sqrt(mean((actual - predicted)^2))
+}
+
+# Training predictions
+ridge_train_pred <- predict(ridge_model, X_train, s = "lambda.min")
+lasso_train_pred <- predict(lasso_model, X_train, s = "lambda.min")
+elastic_train_pred <- predict(elastic_model, X_train, s = "lambda.min")
+
+# Test predictions
+ridge_test_pred <- predict(ridge_model, X_test, s = "lambda.min")
+lasso_test_pred <- predict(lasso_model, X_test, s = "lambda.min")
+elastic_test_pred <- predict(elastic_model, X_test, s = "lambda.min")
+
+# Create comparison table
+performance_comparison <- data.frame(
+  Model = c("Ridge (α=0)", "LASSO (α=1)", 
+            paste0("Elastic Net (α=", optimal_alpha, ")")),
+  Train_RMSE = c(
+    rmse(y_train, ridge_train_pred),
+    rmse(y_train, lasso_train_pred),
+    rmse(y_train, elastic_train_pred)
+  ),
+  Test_RMSE = c(
+    rmse(y_test, ridge_test_pred),
+    rmse(y_test, lasso_test_pred),
+    rmse(y_test, elastic_test_pred)
+  ),
+  CV_RMSE = c(
+    sqrt(min(ridge_model$cvm)),
+    sqrt(min(lasso_model$cvm)),
+    sqrt(min(elastic_model$cvm))
+  ),
+  Num_Features = c(
+    sum(coef(ridge_model, s = "lambda.min")[-1, 1] != 0),
+    sum(coef(lasso_model, s = "lambda.min")[-1, 1] != 0),
+    sum(coef(elastic_model, s = "lambda.min")[-1, 1] != 0)
+  )
+)
+
+# Display
+kable(performance_comparison, digits = 2,
+      caption = "Model Performance Comparison") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Visualize Train vs Test Performance
+
+```{r plot_train_test, fig.height=4}
+# Reshape for plotting
+performance_long <- performance_comparison %>%
+  select(Model, Train_RMSE, Test_RMSE) %>%
+  pivot_longer(cols = c(Train_RMSE, Test_RMSE),
+               names_to = "Dataset", values_to = "RMSE") %>%
+  mutate(Dataset = gsub("_RMSE", "", Dataset))
+
+ggplot(performance_long, aes(x = Model, y = RMSE, fill = Dataset)) +
+  geom_col(position = "dodge", alpha = 0.8) +
+  scale_fill_manual(values = course_colors[c(1, 4)]) +
+  labs(
+    title = "Train vs. Test RMSE Comparison",
+    subtitle = "Smaller gap indicates less overfitting",
+    y = "RMSE ($)"
+  ) +
+  theme(axis.text.x = element_text(angle = 15, hjust = 1))
+```
+
+**Interpretation:**
+
+<!-- TODO: Write 2-3 sentences comparing the three models on test set performance -->
+
+---
+
+# Task 4: Feature Importance Analysis
+
+## Extract Elastic Net Coefficients
+
+```{r extract_coefficients}
+# Extract coefficients at optimal lambda
+elastic_coefs <- coef(elastic_model, s = "lambda.min")
+
+# Convert to data frame
+coef_df <- data.frame(
+  Feature = rownames(elastic_coefs),
+  Coefficient = as.vector(elastic_coefs)
+) %>%
+  filter(Feature != "(Intercept)", Coefficient != 0) %>%
+  arrange(desc(abs(Coefficient)))
+
+# Display top features
+kable(head(coef_df, 15), digits = 4,
+      caption = "Top 15 Features by Coefficient Magnitude") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Visualize Feature Importance
+
+```{r plot_feature_importance, fig.height=5}
+# Plot top features
+top_features <- head(coef_df, 15)
+
+ggplot(top_features, aes(x = reorder(Feature, abs(Coefficient)), 
+                         y = Coefficient,
+                         fill = Coefficient > 0)) +
+  geom_col(alpha = 0.8) +
+  coord_flip() +
+  scale_fill_manual(values = course_colors[c(4, 1)],
+                    labels = c("Negative", "Positive")) +
+  labs(
+    title = "Top 15 Features: Elastic Net Model",
+    subtitle = paste0("Total features selected: ", nrow(coef_df)),
+    x = NULL,
+    y = "Coefficient Value",
+    fill = "Effect"
+  )
+```
+
+## Analyze Feature Selection
+
+```{r feature_selection_summary}
+# Count features by type
+feature_summary <- coef_df %>%
+  mutate(
+    Type = case_when(
+      grepl("^category_", Feature) ~ "Category",
+      grepl("^material_", Feature) ~ "Material",
+      grepl("^brand_", Feature) ~ "Brand",
+      grepl("weight|length|width|height|volume", Feature) ~ "Physical",
+      grepl("competitor|market|seasonal", Feature) ~ "Market",
+      grepl("rating|review|return|warranty", Feature) ~ "Quality",
+      grepl("noise", Feature) ~ "Noise",
+      TRUE ~ "Other"
+    )
+  ) %>%
+  count(Type) %>%
+  arrange(desc(n))
+
+kable(feature_summary, 
+      caption = "Feature Selection by Type") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+**Interpretation:**
+
+<!-- TODO: Write 3-4 sentences about which feature types are most important and whether noise features were eliminated -->
+
+---
+
+# Task 5: Prediction Quality Assessment
+
+## Predicted vs. Actual Plot
+
+```{r plot_predictions, fig.height=4}
+# Create prediction comparison data
+pred_df <- data.frame(
+  Actual = y_test,
+  Predicted = as.vector(elastic_test_pred)
+)
+
+ggplot(pred_df, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.5, size = 2, color = course_colors[1]) +
+  geom_abline(slope = 1, intercept = 0, 
+              color = course_colors[4], linewidth = 1, linetype = "dashed") +
+  labs(
+    title = "Predicted vs. Actual Prices: Test Set",
+    subtitle = "Elastic Net Model",
+    x = "Actual Price ($)",
+    y = "Predicted Price ($)"
+  ) +
+  coord_fixed()
+```
+
+## Residual Analysis
+
+```{r plot_residuals, fig.height=4}
+# Calculate residuals
+pred_df$Residual <- pred_df$Actual - pred_df$Predicted
+
+ggplot(pred_df, aes(x = Predicted, y = Residual)) +
+  geom_point(alpha = 0.5, size = 2, color = course_colors[1]) +
+  geom_hline(yintercept = 0, color = course_colors[4], 
+             linewidth = 1, linetype = "dashed") +
+  geom_smooth(se = TRUE, color = course_colors[3], linewidth = 1) +
+  labs(
+    title = "Residual Plot: Test Set",
+    subtitle = "Random scatter indicates good fit",
+    x = "Predicted Price ($)",
+    y = "Residual ($)"
+  )
+```
+
+## Error Distribution
+
+```{r plot_error_dist, fig.height=4}
+ggplot(pred_df, aes(x = Residual)) +
+  geom_histogram(bins = 30, fill = course_colors[1], alpha = 0.7, color = "white") +
+  geom_vline(xintercept = 0, color = course_colors[4], 
+             linewidth = 1, linetype = "dashed") +
+  labs(
+    title = "Distribution of Prediction Errors",
+    x = "Residual ($)",
+    y = "Count"
+  )
+
+# Summary statistics
+cat("Residual summary:\n")
+summary(pred_df$Residual)
+cat("\nMean Absolute Error:", mean(abs(pred_df$Residual)), "\n")
+```
+
+---
+
+# Model Recommendation
+
+## Summary of Findings
+
+<!-- TODO: Complete this section with your analysis -->
+
+**Optimal Configuration:**
+- Alpha: [INSERT VALUE]
+- Lambda: [INSERT VALUE]
+- Features selected: [INSERT NUMBER] out of 46 predictors
+- Test RMSE: $[INSERT VALUE]
+
+**Performance Comparison:**
+- Ridge test RMSE: $[INSERT]
+- LASSO test RMSE: $[INSERT]
+- Elastic Net test RMSE: $[INSERT]
+
+## Deployment Recommendation
+
+<!-- TODO: Write 2-3 paragraphs addressing the following questions:
+
+1. Would you recommend this model for production deployment? Why or why not?
+
+2. How does the elastic net balance accuracy and interpretability?
+
+3. Are there concerning patterns in the residuals or predictions?
+
+4. What are the main limitations of this model?
+
+5. What next steps would improve model performance?
+
+Write your recommendation here...
+
+-->
+
+---
+
+# Conclusion
+
+<!-- TODO: Write 1-2 paragraphs summarizing key learnings from this analysis -->
+
+---
+
+# Session Information
+
+```{r session_info}
+sessionInfo()
+```

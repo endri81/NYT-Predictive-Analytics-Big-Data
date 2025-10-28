@@ -1,0 +1,525 @@
+---
+title: "Classwork 5: Comprehensive Model Diagnostics"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 5,
+  fig.align = 'center'
+)
+
+library(tidyverse)
+library(glmnet)
+library(knitr)
+library(kableExtra)
+library(broom)
+
+theme_set(theme_minimal(base_size = 12))
+course_colors <- c('#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A994E', '#BC4B51')
+```
+
+# Introduction
+
+This analysis performs comprehensive diagnostics on the elastic net pricing model developed in Classwork 4. The goal is to validate model assumptions, identify problematic observations, quantify prediction uncertainty, and make a go/no-go recommendation for production deployment.
+
+---
+
+# Load Previous Model
+
+```{r load_model}
+# Load data from Classwork 4
+pricing_data <- read.csv("../classwork_4_elastic_net/product_pricing.csv")
+
+# Recreate train-test split (same seed)
+set.seed(123)
+train_idx <- sample(1:nrow(pricing_data), 0.7 * nrow(pricing_data))
+pricing_train <- pricing_data[train_idx, ]
+pricing_test <- pricing_data[-train_idx, ]
+
+# Prepare matrices
+X_train <- model.matrix(price ~ . - 1, data = pricing_train)
+y_train <- pricing_train$price
+
+X_test <- model.matrix(price ~ . - 1, data = pricing_test)
+y_test <- pricing_test$price
+
+# Refit optimal elastic net model from Classwork 4
+# TODO: Use your optimal alpha from Classwork 4
+optimal_alpha <- 0.5  # Replace with your value
+
+elastic_model <- cv.glmnet(X_train, y_train, 
+                           alpha = optimal_alpha, 
+                           nfolds = 10)
+
+cat("Model refitted with alpha =", optimal_alpha, "\n")
+cat("Optimal lambda:", elastic_model$lambda.min, "\n")
+```
+
+---
+
+# Task 1: Residual Analysis
+
+## Calculate Residuals
+
+```{r calculate_residuals}
+# Training predictions
+train_pred <- predict(elastic_model, X_train, s = "lambda.min")
+train_resid <- y_train - train_pred
+
+# Test predictions
+test_pred <- predict(elastic_model, X_test, s = "lambda.min")
+test_resid <- y_test - test_pred
+
+# Summary statistics
+cat("Training residuals:\n")
+summary(as.vector(train_resid))
+
+cat("\nTest residuals:\n")
+summary(as.vector(test_resid))
+```
+
+## Residual Plot
+
+```{r residual_plot, fig.height=4}
+# Create residual plot for test set
+tibble(
+  Predicted = as.vector(test_pred),
+  Residual = as.vector(test_resid)
+) %>%
+  ggplot(aes(x = Predicted, y = Residual)) +
+  geom_point(alpha = 0.6, size = 2, color = course_colors[1]) +
+  geom_hline(yintercept = 0, color = course_colors[4], 
+             linewidth = 1, linetype = "dashed") +
+  geom_smooth(se = TRUE, color = course_colors[3], linewidth = 1) +
+  labs(
+    title = "Residual Plot: Test Set",
+    subtitle = "Random scatter indicates good fit",
+    x = "Predicted Price ($)",
+    y = "Residual ($)"
+  )
+```
+
+**Interpretation:**
+
+<!-- TODO: Write 2-3 sentences:
+- Is there random scatter or a pattern?
+- Is the smoothed line flat or curved?
+- Are there outliers?
+-->
+
+---
+
+# Task 2: Normality and Variance Checks
+
+## Q-Q Plot
+
+```{r qq_plot, fig.height=4}
+# Q-Q plot for test residuals
+qqnorm(test_resid, main = "Q-Q Plot of Test Residuals",
+       pch = 16, col = course_colors[1])
+qqline(test_resid, col = course_colors[4], lwd = 2)
+```
+
+**Interpretation:**
+
+<!-- TODO: Write 2-3 sentences about residual normality -->
+
+## Scale-Location Plot
+
+```{r scale_location, fig.height=4}
+# Scale-location plot
+tibble(
+  Predicted = as.vector(test_pred),
+  Sqrt_Abs_Resid = sqrt(abs(test_resid))
+) %>%
+  ggplot(aes(x = Predicted, y = Sqrt_Abs_Resid)) +
+  geom_point(alpha = 0.6, size = 2, color = course_colors[1]) +
+  geom_smooth(se = FALSE, color = course_colors[3], linewidth = 1) +
+  labs(
+    title = "Scale-Location Plot",
+    subtitle = "Checks for heteroscedasticity",
+    x = "Predicted Price ($)",
+    y = "√|Standardized Residuals|"
+  )
+```
+
+**Interpretation:**
+
+<!-- TODO: Is variance constant across predicted values? -->
+
+---
+
+# Task 3: Influence Analysis
+
+## Calculate Cook's Distance
+
+```{r cooks_distance}
+# For regularized regression, use approximate Cook's distance
+# based on standardized residuals and leverage
+
+# Standardize residuals
+resid_sd <- sd(train_resid)
+std_resid <- train_resid / resid_sd
+
+# Approximate leverage (diagonal of hat matrix is complex for glmnet)
+# Use simplified version based on prediction variance
+leverage <- apply(X_train, 1, function(x) sum(x^2)) / sum(X_train^2)
+
+# Approximate Cook's distance
+n <- nrow(X_train)
+p <- sum(coef(elastic_model, s = "lambda.min") != 0)
+cooks_d <- (std_resid^2 / p) * (leverage / (1 - leverage))
+
+# Threshold
+threshold <- 4 / n
+
+# Identify influential points
+influential_idx <- which(cooks_d > threshold)
+
+cat("Number of influential points:", length(influential_idx), "\n")
+cat("Threshold:", threshold, "\n")
+```
+
+## Visualize Cook's Distance
+
+```{r plot_cooks, fig.height=4}
+tibble(
+  Observation = 1:length(cooks_d),
+  Cooks_D = cooks_d
+) %>%
+  ggplot(aes(x = Observation, y = Cooks_D)) +
+  geom_segment(aes(xend = Observation, yend = 0), 
+               color = course_colors[1], alpha = 0.6) +
+  geom_point(size = 2, color = course_colors[1]) +
+  geom_hline(yintercept = threshold, linetype = "dashed", 
+             color = course_colors[4], linewidth = 1) +
+  annotate("text", x = n * 0.8, y = threshold * 1.5, 
+           label = paste0("Threshold = ", round(threshold, 4))) +
+  labs(
+    title = "Cook's Distance for Training Set",
+    subtitle = paste(length(influential_idx), "influential points detected"),
+    x = "Observation Index",
+    y = "Cook's Distance"
+  )
+```
+
+## Examine Influential Points
+
+```{r examine_influential}
+if (length(influential_idx) > 0) {
+  influential_data <- pricing_train[influential_idx, ] %>%
+    select(price, weight, category_electronics, brand_premium, 
+           competitor_avg_price, customer_rating) %>%
+    head(10)
+  
+  kable(influential_data, 
+        caption = "Top Influential Observations") %>%
+    kable_styling(bootstrap_options = "striped")
+}
+```
+
+**Interpretation:**
+
+<!-- TODO: Why might these points be influential? Data errors or real edge cases? -->
+
+---
+
+# Task 4: Prediction Intervals
+
+## Bootstrap Prediction Intervals
+
+```{r bootstrap_intervals}
+# Bootstrap approach
+set.seed(42)
+n_boot <- 100  # Use 1000+ in practice
+n_test <- nrow(X_test)
+
+predictions_boot <- matrix(NA, n_test, n_boot)
+
+cat("Running bootstrap (this may take a moment)...\n")
+
+for (b in 1:n_boot) {
+  # Resample training data
+  boot_idx <- sample(1:nrow(X_train), replace = TRUE)
+  X_boot <- X_train[boot_idx, ]
+  y_boot <- y_train[boot_idx]
+  
+  # Fit model
+  model_boot <- cv.glmnet(X_boot, y_boot, alpha = optimal_alpha)
+  
+  # Predict
+  predictions_boot[, b] <- predict(model_boot, X_test, s = "lambda.min")
+  
+  if (b %% 20 == 0) cat("  Completed", b, "iterations\n")
+}
+
+# Calculate 95% prediction intervals
+pred_lower <- apply(predictions_boot, 1, quantile, 0.025)
+pred_upper <- apply(predictions_boot, 1, quantile, 0.975)
+pred_mean <- apply(predictions_boot, 1, mean)
+pred_width <- pred_upper - pred_lower
+
+cat("\nPrediction interval summary:\n")
+cat("Mean width: $", round(mean(pred_width), 2), "\n")
+cat("Median width: $", round(median(pred_width), 2), "\n")
+```
+
+## Visualize Prediction Intervals
+
+```{r plot_intervals, fig.height=4}
+# Sort by actual price for better visualization
+plot_data <- tibble(
+  Actual = y_test,
+  Predicted = pred_mean,
+  Lower = pred_lower,
+  Upper = pred_upper
+) %>%
+  arrange(Actual) %>%
+  mutate(Index = 1:n())
+
+ggplot(plot_data, aes(x = Index)) +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), 
+              alpha = 0.3, fill = course_colors[1]) +
+  geom_line(aes(y = Predicted), color = course_colors[1], linewidth = 1) +
+  geom_point(aes(y = Actual), color = course_colors[4], size = 1, alpha = 0.6) +
+  labs(
+    title = "Predictions with 95% Bootstrap Intervals",
+    subtitle = "Blue band = prediction interval, red dots = actual prices",
+    x = "Test Observation (sorted by actual price)",
+    y = "Price ($)"
+  )
+```
+
+## Check Interval Coverage
+
+```{r check_coverage}
+# What percentage of actual values fall within intervals?
+coverage <- mean(y_test >= pred_lower & y_test <= pred_upper)
+
+cat("Interval coverage:", round(coverage * 100, 1), "%\n")
+cat("Target coverage: 95%\n")
+
+if (coverage < 0.93 | coverage > 0.97) {
+  cat("⚠ Coverage is outside expected range (93-97%)\n")
+} else {
+  cat("✓ Coverage is good\n")
+}
+```
+
+**Interpretation:**
+
+<!-- TODO: Is coverage adequate? Are intervals too wide/narrow for business use? -->
+
+---
+
+# Task 5: Coefficient Stability
+
+## Bootstrap Coefficient Confidence Intervals
+
+```{r bootstrap_coefs}
+# Bootstrap for coefficient stability
+set.seed(42)
+n_boot <- 200  # More iterations for coefficient stability
+n_coef <- ncol(X_train)
+
+coef_boot <- matrix(NA, n_coef, n_boot)
+
+cat("Bootstrapping coefficients...\n")
+
+for (b in 1:n_boot) {
+  boot_idx <- sample(1:nrow(X_train), replace = TRUE)
+  model_boot <- cv.glmnet(X_train[boot_idx,], y_train[boot_idx], 
+                          alpha = optimal_alpha)
+  coef_boot[, b] <- as.vector(coef(model_boot, s = "lambda.min"))[-1]
+  
+  if (b %% 50 == 0) cat("  Completed", b, "iterations\n")
+}
+
+# Calculate CI for each coefficient
+coef_est <- as.vector(coef(elastic_model, s = "lambda.min"))[-1]
+coef_lower <- apply(coef_boot, 1, quantile, 0.025)
+coef_upper <- apply(coef_boot, 1, quantile, 0.975)
+coef_sd <- apply(coef_boot, 1, sd)
+
+# Create summary table
+coef_summary <- tibble(
+  Feature = colnames(X_train),
+  Estimate = coef_est,
+  Lower_95 = coef_lower,
+  Upper_95 = coef_upper,
+  SD = coef_sd,
+  Significant = !(Lower_95 < 0 & Upper_95 > 0)
+) %>%
+  arrange(desc(abs(Estimate))) %>%
+  filter(Estimate != 0)
+
+cat("\nTop 15 features by coefficient magnitude:\n")
+coef_summary %>%
+  head(15) %>%
+  kable(digits = 4) %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+## Visualize Coefficient Stability
+
+```{r plot_coef_stability, fig.height=5}
+# Plot top 15 features
+coef_summary %>%
+  head(15) %>%
+  mutate(Feature = factor(Feature, levels = Feature)) %>%
+  ggplot(aes(x = Feature, y = Estimate)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbar(aes(ymin = Lower_95, ymax = Upper_95), 
+                width = 0.3, linewidth = 1, color = course_colors[1]) +
+  geom_point(size = 3, color = course_colors[3]) +
+  coord_flip() +
+  labs(
+    title = "Top 15 Coefficients with 95% Bootstrap CIs",
+    subtitle = "Stable coefficients have narrow intervals",
+    x = NULL,
+    y = "Coefficient Value"
+  )
+```
+
+**Interpretation:**
+
+<!-- TODO: Which coefficients are stable? Which have high uncertainty? -->
+
+---
+
+# Task 6: Diagnostic Summary
+
+## Create Diagnostic Dashboard
+
+```{r diagnostic_dashboard}
+# Calculate key diagnostic metrics
+rmse_train <- sqrt(mean(train_resid^2))
+rmse_test <- sqrt(mean(test_resid^2))
+mae_test <- mean(abs(test_resid))
+r2_test <- 1 - sum(test_resid^2) / sum((y_test - mean(y_test))^2)
+
+max_resid <- max(abs(test_resid))
+pct_large_resid <- mean(abs(test_resid) > 2 * sd(test_resid)) * 100
+
+diagnostic_summary <- tibble(
+  Metric = c(
+    "RMSE (Train)",
+    "RMSE (Test)",
+    "MAE (Test)",
+    "R² (Test)",
+    "Max |Residual|",
+    "% Residuals > 2σ",
+    "Influential Points",
+    "Prediction Interval Coverage",
+    "Mean PI Width",
+    "Significant Coefficients"
+  ),
+  Value = c(
+    paste0("$", round(rmse_train, 2)),
+    paste0("$", round(rmse_test, 2)),
+    paste0("$", round(mae_test, 2)),
+    round(r2_test, 3),
+    paste0("$", round(max_resid, 2)),
+    paste0(round(pct_large_resid, 1), "%"),
+    length(influential_idx),
+    paste0(round(coverage * 100, 1), "%"),
+    paste0("$", round(mean(pred_width), 2)),
+    sum(coef_summary$Significant)
+  ),
+  Status = c(
+    ifelse(rmse_train < 50, "✓", "⚠"),
+    ifelse(rmse_test < 50, "✓", "⚠"),
+    ifelse(mae_test < 40, "✓", "⚠"),
+    ifelse(r2_test > 0.8, "✓", "⚠"),
+    ifelse(max_resid < 150, "✓", "⚠"),
+    ifelse(pct_large_resid < 10, "✓", "⚠"),
+    ifelse(length(influential_idx) < 10, "✓", "⚠"),
+    ifelse(abs(coverage - 0.95) < 0.03, "✓", "⚠"),
+    ifelse(mean(pred_width) < 100, "✓", "⚠"),
+    "ℹ"
+  )
+)
+
+kable(diagnostic_summary, 
+      caption = "Model Diagnostic Summary") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+## Diagnostic Checklist
+
+```{r checklist}
+checklist <- tibble(
+  Check = c(
+    "Residuals show random scatter",
+    "Q-Q plot approximately linear",
+    "No severe heteroscedasticity",
+    "Influential points < 5% of data",
+    "Prediction interval coverage 93-97%",
+    "Coefficient estimates stable",
+    "Test RMSE < $50",
+    "R² > 0.80"
+  ),
+  Status = c(
+    "☐",  # TODO: Fill these in based on your analysis
+    "☐",
+    "☐",
+    "☐",
+    "☐",
+    "☐",
+    "☐",
+    "☐"
+  )
+)
+
+kable(checklist, caption = "Diagnostic Checklist") %>%
+  kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+---
+
+# Deployment Recommendation
+
+## Model Strengths
+
+<!-- TODO: Write 2-3 sentences about what the model does well -->
+
+## Model Limitations
+
+<!-- TODO: Write 2-3 sentences about model weaknesses or areas of concern -->
+
+## Go/No-Go Decision
+
+**Recommendation:** [GO / NO-GO / GO WITH CONDITIONS]
+
+<!-- TODO: Write 2-3 paragraphs justifying your recommendation:
+- Is model performance adequate for business needs?
+- Are diagnostic checks passed?
+- What conditions/monitoring are needed if deployed?
+- What are the risks of deployment?
+-->
+
+---
+
+# Conclusion
+
+<!-- TODO: Write 1-2 paragraphs summarizing key findings from diagnostic analysis -->
+
+---
+
+# Session Information
+
+```{r session_info}
+sessionInfo()
+```

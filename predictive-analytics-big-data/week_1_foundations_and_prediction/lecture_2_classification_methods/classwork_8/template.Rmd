@@ -1,0 +1,258 @@
+---
+title: "Classwork 8: Advanced Regularization Methods"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+# Setup
+
+```{r libraries}
+library(tidyverse)
+library(glmnet)
+library(gglasso)  # Install if needed: install.packages("gglasso")
+library(pROC)
+library(kableExtra)
+
+# Load data
+readmission_data <- read_csv("hospital_readmission.csv")
+feature_groups <- read_csv("feature_groups.csv")
+
+# Set seed for reproducibility
+set.seed(123)
+```
+
+```{r data-split}
+# TODO: Split data into train (70%) and validation (30%)
+# Stratify by readmission outcome
+
+# TODO: Prepare feature matrices and outcome vectors
+# X_train, y_train, X_val, y_val
+```
+
+---
+
+# Part 1: Standard LASSO Baseline
+
+## Model Fitting
+
+```{r lasso-baseline}
+# TODO: Fit standard LASSO using cv.glmnet()
+# alpha = 1, family = "binomial"
+# Use 10-fold cross-validation
+
+# TODO: Extract optimal lambda (lambda.1se)
+
+# TODO: Get selected features at optimal lambda
+```
+
+## Performance Evaluation
+
+```{r lasso-performance}
+# TODO: Generate predictions on validation set
+
+# TODO: Calculate AUC
+
+# TODO: Count selected features and breakdown by group
+```
+
+```{r lasso-summary}
+# TODO: Create performance summary table
+# Columns: Metric | Value
+# Metrics: AUC, Num Features, Selected Groups
+```
+
+## Stability Assessment
+
+```{r lasso-stability}
+# TODO: Bootstrap analysis (5 replicates)
+# For each replicate:
+#   - Sample with replacement from training data
+#   - Fit LASSO
+#   - Extract coefficients
+# Calculate coefficient variance across replicates
+```
+
+**Stability Findings:**
+
+[Write 2-3 sentences on which features show high variance (unstable selection) and which are consistently selected.]
+
+---
+
+# Part 2: Group LASSO Implementation
+
+## Group Structure
+
+```{r group-setup}
+# TODO: Create group indicator vector
+# Map each feature to its group (1=vital signs, 2=labs, 3=medications, 4=diagnoses, 5=procedures)
+
+# TODO: Verify group structure
+# Check that all features are assigned to groups
+```
+
+## Model Fitting
+
+```{r group-lasso}
+# TODO: Fit group LASSO using cv.gglasso()
+# Provide X, y, and group indicator
+
+# TODO: Extract optimal lambda (lambda.1se equivalent)
+
+# TODO: Get selected groups at optimal lambda
+```
+
+## Group Selection Analysis
+
+```{r group-selection}
+# TODO: Identify which groups were selected
+
+# TODO: Count features within each selected group
+
+# TODO: Create summary of group selection
+```
+
+```{r group-visualization}
+# TODO: Visualize group selection
+# Bar plot showing selected vs excluded groups
+```
+
+## Performance Evaluation
+
+```{r group-lasso-performance}
+# TODO: Generate predictions on validation set
+
+# TODO: Calculate AUC
+
+# TODO: Create performance summary
+```
+
+**Group LASSO Findings:**
+
+[Write 3-4 sentences describing which clinical domains (groups) were selected and whether this makes clinical sense.]
+
+---
+
+# Part 3: Comparative Analysis
+
+## Performance Comparison
+
+```{r comparison-table}
+# TODO: Create side-by-side comparison
+# Columns: Metric | Standard LASSO | Group LASSO | Difference
+# Metrics: AUC, Num Features, Num Groups, Training Time
+```
+
+## Feature Selection Patterns
+
+```{r selection-patterns}
+# TODO: Analyze how selected features distribute across groups
+# For standard LASSO: count features per group
+# For group LASSO: show which entire groups selected
+
+# TODO: Create visualization comparing selection patterns
+```
+
+```{r coefficient-comparison}
+# TODO: Plot coefficients for both methods
+# Color-code by feature group
+# Show how group LASSO creates more structured selection
+```
+
+## Interpretability Assessment
+
+**Standard LASSO Interpretation:**
+
+[Write 2-3 sentences describing the pattern of selected features. Do they form a coherent clinical story or seem scattered?]
+
+**Group LASSO Interpretation:**
+
+[Write 2-3 sentences describing which clinical domains were prioritized. Does this align with medical knowledge about readmission risk?]
+
+## Clinical Validity
+
+```{r clinical-assessment}
+# TODO: For selected features/groups, assess clinical plausibility
+# Do selected vital signs make sense for readmission prediction?
+# Are selected diagnoses known readmission risk factors?
+```
+
+**Clinical Plausibility:**
+
+[Write 3-4 sentences evaluating whether selected features/groups align with medical knowledge about factors driving hospital readmission.]
+
+---
+
+# Part 4: Clinical Recommendation
+
+## Model Selection Trade-offs
+
+```{r tradeoff-analysis}
+# TODO: Quantify performance-interpretability tradeoff
+# Calculate: AUC difference, interpretability gain (fewer scattered features)
+```
+
+## Deployment Recommendation
+
+**Recommended Approach:** [Standard LASSO / Group LASSO]
+
+**Justification:**
+
+[Write 2-3 paragraphs explaining your recommendation. Address:]
+
+1. Performance comparison: Is AUC difference clinically meaningful? What is acceptable performance sacrifice for interpretability?
+
+2. Interpretability benefit: How much easier is group LASSO to explain to clinicians? Will they trust group-based selection more than feature-by-feature selection?
+
+3. Operational considerations: Will group LASSO be more stable across model retraining? Will selected groups make sense to clinical stakeholders who must approve model deployment?
+
+## Implementation Plan
+
+[Write 2-3 sentences on next steps for deploying recommended model including validation with clinical team, monitoring strategy, and retraining protocol.]
+
+---
+
+# Summary and Key Learnings
+
+## What I Learned
+
+1. Group LASSO differs from standard LASSO by...
+
+2. The performance-interpretability tradeoff showed...
+
+3. For clinical applications, group structure matters because...
+
+## When to Use Group LASSO
+
+[Write 2-3 sentences describing scenarios where group LASSO preferable to standard LASSO.]
+
+## Questions for Further Exploration
+
+1. How would sparse group LASSO (allowing within-group selection) compare to pure group LASSO?
+
+2. Could adaptive group penalties (stronger penalties for less important groups) improve selection?
+
+3. How sensitive is group LASSO to the specified group structure?
+
+---
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```

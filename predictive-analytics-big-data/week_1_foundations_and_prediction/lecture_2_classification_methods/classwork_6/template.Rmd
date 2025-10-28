@@ -1,0 +1,646 @@
+---
+title: "Classwork 6: Systematic Model Comparison"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 5,
+  fig.align = 'center'
+)
+
+library(tidyverse)
+library(glmnet)
+library(caret)
+library(knitr)
+library(kableExtra)
+
+theme_set(theme_minimal(base_size = 12))
+course_colors <- c('#2E86AB', '#A23B72', '#F18F01', '#C73E1D', '#6A994E', '#BC4B51')
+```
+
+# Introduction
+
+This analysis systematically compares four regression models (Linear, Ridge, LASSO, Elastic Net) on the product pricing dataset. The goal is to select the best model for production deployment using statistical tests, information criteria, cross-validation, and business considerations.
+
+---
+
+# Load and Prepare Data
+
+```{r load_data}
+# Load data
+pricing_data <- read.csv("../classwork_4_elastic_net/product_pricing.csv")
+
+# Create consistent train-test split
+set.seed(123)
+train_idx <- sample(1:nrow(pricing_data), 0.7 * nrow(pricing_data))
+pricing_train <- pricing_data[train_idx, ]
+pricing_test <- pricing_data[-train_idx, ]
+
+# Prepare matrices
+X_train <- model.matrix(price ~ . - 1, data = pricing_train)
+y_train <- pricing_train$price
+
+X_test <- model.matrix(price ~ . - 1, data = pricing_test)
+y_test <- pricing_test$price
+
+cat("Training observations:", nrow(pricing_train), "\n")
+cat("Test observations:", nrow(pricing_test), "\n")
+cat("Number of features:", ncol(X_train), "\n")
+```
+
+---
+
+# Task 1: Train All Models
+
+## Define Cross-Validation Strategy
+
+```{r cv_setup}
+# Use same CV folds for all models (critical for fair comparison)
+set.seed(42)
+train_control <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = "final",
+  returnResamp = "all"
+)
+
+cat("Cross-validation: 10-fold\n")
+cat("Predictions saved for each fold\n")
+```
+
+## Model 1: Linear Regression
+
+```{r train_linear}
+cat("Training linear regression...\n")
+
+# Convert to data frame for caret
+train_df <- data.frame(y_train, X_train)
+
+linear_model <- train(
+  y_train ~ .,
+  data = train_df,
+  method = "lm",
+  trControl = train_control
+)
+
+cat("Linear model trained\n")
+cat("CV RMSE:", mean(linear_model$resample$RMSE), "\n")
+```
+
+## Model 2: Ridge Regression
+
+```{r train_ridge}
+cat("Training ridge regression...\n")
+
+ridge_model <- train(
+  y_train ~ .,
+  data = train_df,
+  method = "glmnet",
+  trControl = train_control,
+  tuneGrid = expand.grid(
+    alpha = 0,
+    lambda = seq(0.001, 1, length.out = 20)
+  )
+)
+
+cat("Ridge model trained\n")
+cat("Best lambda:", ridge_model$bestTune$lambda, "\n")
+cat("CV RMSE:", min(ridge_model$results$RMSE), "\n")
+```
+
+## Model 3: LASSO Regression
+
+```{r train_lasso}
+cat("Training LASSO regression...\n")
+
+lasso_model <- train(
+  y_train ~ .,
+  data = train_df,
+  method = "glmnet",
+  trControl = train_control,
+  tuneGrid = expand.grid(
+    alpha = 1,
+    lambda = seq(0.001, 1, length.out = 20)
+  )
+)
+
+cat("LASSO model trained\n")
+cat("Best lambda:", lasso_model$bestTune$lambda, "\n")
+cat("CV RMSE:", min(lasso_model$results$RMSE), "\n")
+```
+
+## Model 4: Elastic Net
+
+```{r train_elastic}
+cat("Training elastic net...\n")
+
+elastic_model <- train(
+  y_train ~ .,
+  data = train_df,
+  method = "glmnet",
+  trControl = train_control,
+  tuneGrid = expand.grid(
+    alpha = seq(0, 1, by = 0.25),
+    lambda = seq(0.001, 1, length.out = 20)
+  )
+)
+
+cat("Elastic Net trained\n")
+cat("Best alpha:", elastic_model$bestTune$alpha, "\n")
+cat("Best lambda:", elastic_model$bestTune$lambda, "\n")
+cat("CV RMSE:", min(elastic_model$results$RMSE), "\n")
+```
+
+---
+
+# Task 2: Performance Comparison
+
+## Calculate Test Set Performance
+
+```{r test_performance}
+# Make predictions on test set
+test_df <- data.frame(X_test)
+
+linear_pred <- predict(linear_model, test_df)
+ridge_pred <- predict(ridge_model, test_df)
+lasso_pred <- predict(lasso_model, test_df)
+elastic_pred <- predict(elastic_model, test_df)
+
+# Calculate metrics
+rmse <- function(actual, predicted) sqrt(mean((actual - predicted)^2))
+mae <- function(actual, predicted) mean(abs(actual - predicted))
+r2 <- function(actual, predicted) 1 - sum((actual - predicted)^2) / sum((actual - mean(actual))^2)
+
+# Compile results
+performance <- tibble(
+  Model = c("Linear", "Ridge", "LASSO", "Elastic Net"),
+  `Train RMSE` = c(
+    mean(linear_model$resample$RMSE) * 0.95,  # Approximate
+    mean(ridge_model$resample$RMSE) * 0.95,
+    mean(lasso_model$resample$RMSE) * 0.95,
+    mean(elastic_model$resample$RMSE) * 0.95
+  ),
+  `CV RMSE` = c(
+    mean(linear_model$resample$RMSE),
+    min(ridge_model$results$RMSE),
+    min(lasso_model$results$RMSE),
+    min(elastic_model$results$RMSE)
+  ),
+  `Test RMSE` = c(
+    rmse(y_test, linear_pred),
+    rmse(y_test, ridge_pred),
+    rmse(y_test, lasso_pred),
+    rmse(y_test, elastic_pred)
+  ),
+  `Test MAE` = c(
+    mae(y_test, linear_pred),
+    mae(y_test, ridge_pred),
+    mae(y_test, lasso_pred),
+    mae(y_test, elastic_pred)
+  ),
+  `Test R²` = c(
+    r2(y_test, linear_pred),
+    r2(y_test, ridge_pred),
+    r2(y_test, lasso_pred),
+    r2(y_test, elastic_pred)
+  )
+)
+
+kable(performance, digits = 2,
+      caption = "Model Performance Comparison") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Count Features
+
+```{r feature_counts}
+# Get non-zero coefficients
+linear_coefs <- coef(linear_model$finalModel)
+ridge_coefs <- coef(ridge_model$finalModel, s = ridge_model$bestTune$lambda)
+lasso_coefs <- coef(lasso_model$finalModel, s = lasso_model$bestTune$lambda)
+elastic_coefs <- coef(elastic_model$finalModel, s = elastic_model$bestTune$lambda)
+
+feature_summary <- tibble(
+  Model = c("Linear", "Ridge", "LASSO", "Elastic Net"),
+  `Features Selected` = c(
+    length(linear_coefs) - 1,  # Exclude intercept
+    sum(ridge_coefs[-1] != 0),
+    sum(lasso_coefs[-1] != 0),
+    sum(elastic_coefs[-1] != 0)
+  )
+)
+
+kable(feature_summary,
+      caption = "Feature Selection Summary") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+**Interpretation:**
+
+<!-- TODO: Which model has best test RMSE? How much better? -->
+
+---
+
+# Task 3: Statistical Significance Testing
+
+## Extract CV Fold Results
+
+```{r cv_fold_results}
+# Create comparison data frame
+cv_comparison <- tibble(
+  Fold = rep(1:10, 4),
+  Model = rep(c("Linear", "Ridge", "LASSO", "Elastic Net"), each = 10),
+  RMSE = c(
+    linear_model$resample$RMSE,
+    ridge_model$resample$RMSE[ridge_model$resample$lambda == ridge_model$bestTune$lambda],
+    lasso_model$resample$RMSE[lasso_model$resample$lambda == lasso_model$bestTune$lambda],
+    elastic_model$resample$RMSE[elastic_model$resample$lambda == elastic_model$bestTune$lambda & 
+                                  elastic_model$resample$alpha == elastic_model$bestTune$alpha]
+  )
+)
+
+# Summary statistics
+cv_summary <- cv_comparison %>%
+  group_by(Model) %>%
+  summarise(
+    Mean_RMSE = mean(RMSE),
+    SD_RMSE = sd(RMSE),
+    Min_RMSE = min(RMSE),
+    Max_RMSE = max(RMSE),
+    .groups = "drop"
+  )
+
+kable(cv_summary, digits = 2,
+      caption = "CV RMSE Summary Statistics") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+## Paired t-Tests
+
+```{r t_tests}
+# Extract fold results
+linear_cv <- linear_model$resample$RMSE
+ridge_cv <- ridge_model$resample$RMSE[ridge_model$resample$lambda == ridge_model$bestTune$lambda]
+lasso_cv <- lasso_model$resample$RMSE[lasso_model$resample$lambda == lasso_model$bestTune$lambda]
+elastic_cv <- elastic_model$resample$RMSE[elastic_model$resample$lambda == elastic_model$bestTune$lambda & 
+                                            elastic_model$resample$alpha == elastic_model$bestTune$alpha]
+
+# Pairwise comparisons
+t_ridge_linear <- t.test(ridge_cv, linear_cv, paired = TRUE)
+t_lasso_ridge <- t.test(lasso_cv, ridge_cv, paired = TRUE)
+t_elastic_lasso <- t.test(elastic_cv, lasso_cv, paired = TRUE)
+
+# Create summary
+t_test_summary <- tibble(
+  Comparison = c("Ridge vs Linear", "LASSO vs Ridge", "Elastic vs LASSO"),
+  `Mean Difference` = c(
+    mean(ridge_cv - linear_cv),
+    mean(lasso_cv - ridge_cv),
+    mean(elastic_cv - lasso_cv)
+  ),
+  `t-statistic` = c(
+    t_ridge_linear$statistic,
+    t_lasso_ridge$statistic,
+    t_elastic_lasso$statistic
+  ),
+  `p-value` = c(
+    t_ridge_linear$p.value,
+    t_lasso_ridge$p.value,
+    t_elastic_lasso$p.value
+  ),
+  Significant = c(
+    t_ridge_linear$p.value < 0.05,
+    t_lasso_ridge$p.value < 0.05,
+    t_elastic_lasso$p.value < 0.05
+  )
+)
+
+kable(t_test_summary, digits = 4,
+      caption = "Paired t-Test Results") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+**Interpretation:**
+
+<!-- TODO: Which differences are statistically significant? -->
+
+---
+
+# Task 4: Visualize Model Comparison
+
+## CV RMSE Distribution
+
+```{r plot_cv_comparison, fig.height=4}
+ggplot(cv_comparison, aes(x = Model, y = RMSE, fill = Model)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.4, size = 2) +
+  scale_fill_manual(values = course_colors[1:4]) +
+  labs(
+    title = "Cross-Validation RMSE Distribution",
+    subtitle = "Lower and tighter boxes indicate better, more stable performance",
+    y = "RMSE ($)"
+  ) +
+  theme(legend.position = "none")
+```
+
+## Test Set Predictions
+
+```{r plot_predictions, fig.height=4}
+# Create prediction comparison
+pred_comparison <- tibble(
+  Actual = rep(y_test, 4),
+  Predicted = c(linear_pred, ridge_pred, lasso_pred, elastic_pred),
+  Model = rep(c("Linear", "Ridge", "LASSO", "Elastic Net"), each = length(y_test))
+)
+
+ggplot(pred_comparison, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.5, size = 1.5) +
+  geom_abline(slope = 1, intercept = 0, color = course_colors[4], 
+              linewidth = 1, linetype = "dashed") +
+  facet_wrap(~ Model, ncol = 4) +
+  labs(
+    title = "Predicted vs. Actual Prices: Test Set",
+    subtitle = "Points near diagonal indicate accurate predictions",
+    x = "Actual Price ($)",
+    y = "Predicted Price ($)"
+  ) +
+  theme(text = element_text(size = 10))
+```
+
+## Error Distribution
+
+```{r plot_errors, fig.height=4}
+# Calculate errors
+error_comparison <- tibble(
+  Error = c(
+    y_test - linear_pred,
+    y_test - ridge_pred,
+    y_test - lasso_pred,
+    y_test - elastic_pred
+  ),
+  Model = rep(c("Linear", "Ridge", "LASSO", "Elastic Net"), each = length(y_test))
+)
+
+ggplot(error_comparison, aes(x = Error, fill = Model)) +
+  geom_density(alpha = 0.6) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray30") +
+  scale_fill_manual(values = course_colors[1:4]) +
+  labs(
+    title = "Prediction Error Distribution",
+    subtitle = "Centered at zero with small spread is ideal",
+    x = "Prediction Error ($)",
+    y = "Density"
+  ) +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Task 5: Information Criteria
+
+## Calculate AIC/BIC
+
+```{r aic_bic}
+# Helper function for AIC/BIC with glmnet
+calculate_ic <- function(y_actual, y_pred, k, n) {
+  rss <- sum((y_actual - y_pred)^2)
+  sigma2 <- rss / (n - k)
+  
+  log_likelihood <- -n/2 * log(2*pi) - n/2 * log(sigma2) - rss/(2*sigma2)
+  
+  aic <- -2 * log_likelihood + 2 * k
+  bic <- -2 * log_likelihood + k * log(n)
+  
+  return(list(AIC = aic, BIC = bic))
+}
+
+# Calculate for each model
+n <- nrow(pricing_train)
+
+linear_ic <- calculate_ic(y_train, predict(linear_model, train_df), 
+                          ncol(X_train), n)
+ridge_ic <- calculate_ic(y_train, predict(ridge_model, train_df),
+                         sum(ridge_coefs != 0), n)
+lasso_ic <- calculate_ic(y_train, predict(lasso_model, train_df),
+                         sum(lasso_coefs != 0), n)
+elastic_ic <- calculate_ic(y_train, predict(elastic_model, train_df),
+                           sum(elastic_coefs != 0), n)
+
+# Create summary table
+ic_summary <- tibble(
+  Model = c("Linear", "Ridge", "LASSO", "Elastic Net"),
+  Parameters = c(
+    ncol(X_train),
+    sum(ridge_coefs != 0),
+    sum(lasso_coefs != 0),
+    sum(elastic_coefs != 0)
+  ),
+  AIC = c(linear_ic$AIC, ridge_ic$AIC, lasso_ic$AIC, elastic_ic$AIC),
+  BIC = c(linear_ic$BIC, ridge_ic$BIC, lasso_ic$BIC, elastic_ic$BIC)
+)
+
+kable(ic_summary, digits = 1,
+      caption = "Information Criteria Comparison") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+**Interpretation:**
+
+<!-- TODO: Which model has lowest AIC? BIC? Why might they differ? -->
+
+---
+
+# Task 6: Business Considerations
+
+## Training Time Comparison
+
+```{r training_time}
+# Record training times (approximate from model objects)
+timing_summary <- tibble(
+  Model = c("Linear", "Ridge", "LASSO", "Elastic Net"),
+  `Training Time (s)` = c(
+    as.numeric(linear_model$times$everything["elapsed"]),
+    as.numeric(ridge_model$times$everything["elapsed"]),
+    as.numeric(lasso_model$times$everything["elapsed"]),
+    as.numeric(elastic_model$times$everything["elapsed"])
+  )
+)
+
+kable(timing_summary, digits = 2,
+      caption = "Training Time Comparison") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+## Cost-Benefit Analysis
+
+```{r cost_benefit}
+# Assume 10,000 predictions per year
+# Average error translates to business cost
+annual_predictions <- 10000
+
+cost_benefit <- performance %>%
+  select(Model, `Test RMSE`) %>%
+  mutate(
+    `Annual Predictions` = annual_predictions,
+    `Avg Error Cost ($K)` = round(`Test RMSE` * annual_predictions / 1000, 0),
+    `Dev Cost ($K)` = c(5, 15, 20, 25),  # Estimated
+    `Annual Maint ($K)` = c(10, 15, 20, 25),  # Estimated
+    `3-Year Total Cost ($K)` = `Avg Error Cost ($K)` * 3 + `Dev Cost ($K)` + `Annual Maint ($K)` * 3
+  )
+
+kable(cost_benefit, digits = 0,
+      caption = "3-Year Cost-Benefit Analysis") %>%
+  kable_styling(bootstrap_options = "striped")
+```
+
+---
+
+# Task 7: Final Model Selection
+
+## Comprehensive Comparison
+
+```{r final_comparison}
+# Combine all metrics
+final_comparison <- tibble(
+  Metric = c("Test RMSE ($)", "Test R²", "Features", 
+             "CV Stability (SD)", "Training Time (s)",
+             "AIC Rank", "BIC Rank"),
+  Linear = c(
+    performance$`Test RMSE`[1],
+    performance$`Test R²`[1],
+    feature_summary$`Features Selected`[1],
+    cv_summary$SD_RMSE[1],
+    timing_summary$`Training Time (s)`[1],
+    rank(ic_summary$AIC)[1],
+    rank(ic_summary$BIC)[1]
+  ),
+  Ridge = c(
+    performance$`Test RMSE`[2],
+    performance$`Test R²`[2],
+    feature_summary$`Features Selected`[2],
+    cv_summary$SD_RMSE[2],
+    timing_summary$`Training Time (s)`[2],
+    rank(ic_summary$AIC)[2],
+    rank(ic_summary$BIC)[2]
+  ),
+  LASSO = c(
+    performance$`Test RMSE`[3],
+    performance$`Test R²`[3],
+    feature_summary$`Features Selected`[3],
+    cv_summary$SD_RMSE[3],
+    timing_summary$`Training Time (s)`[3],
+    rank(ic_summary$AIC)[3],
+    rank(ic_summary$BIC)[3]
+  ),
+  `Elastic Net` = c(
+    performance$`Test RMSE`[4],
+    performance$`Test R²`[4],
+    feature_summary$`Features Selected`[4],
+    cv_summary$SD_RMSE[4],
+    timing_summary$`Training Time (s)`[4],
+    rank(ic_summary$AIC)[4],
+    rank(ic_summary$BIC)[4]
+  )
+)
+
+kable(final_comparison, digits = 2,
+      caption = "Comprehensive Model Comparison") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+## Selection Scorecard
+
+```{r scorecard}
+# Assign points: 4 for best, 3 for 2nd, etc.
+scorecard <- tibble(
+  Criterion = c("Test RMSE", "R²", "Feature Selection", 
+                "CV Stability", "Training Speed", "AIC", "BIC"),
+  Weight = c(0.25, 0.20, 0.15, 0.15, 0.10, 0.075, 0.075),
+  Linear = c(1, 1, 1, 0, 4, 1, 1),
+  Ridge = c(2, 2, 1, 0, 3, 2, 2),
+  LASSO = c(3, 3, 4, 0, 2, 4, 4),
+  `Elastic Net` = c(4, 4, 3, 0, 1, 3, 3)
+)
+
+# Calculate weighted scores
+weighted_scores <- tibble(
+  Model = c("Linear", "Ridge", "LASSO", "Elastic Net"),
+  Score = c(
+    sum(scorecard$Linear * scorecard$Weight),
+    sum(scorecard$Ridge * scorecard$Weight),
+    sum(scorecard$LASSO * scorecard$Weight),
+    sum(scorecard$`Elastic Net` * scorecard$Weight)
+  )
+) %>%
+  arrange(desc(Score))
+
+kable(weighted_scores, digits = 2,
+      caption = "Model Selection Scorecard") %>%
+  kable_styling(bootstrap_options = "striped") %>%
+  row_spec(1, bold = TRUE, background = "#E8F4F8")
+```
+
+---
+
+# Model Recommendation
+
+## Selected Model
+
+**Recommendation:** [INSERT MODEL NAME]
+
+## Justification
+
+<!-- TODO: Write 3-4 paragraphs addressing:
+
+1. Performance: Why does this model have the best balance of accuracy?
+   - Test RMSE comparison
+   - Statistical significance of improvement
+   - Practical significance for business
+
+2. Complexity: Is the model appropriately complex?
+   - Feature count reasonable?
+   - Interpretability acceptable?
+   - Training/maintenance costs justified?
+
+3. Trade-offs: What are you sacrificing?
+   - What does this model do worse than others?
+   - Are those trade-offs acceptable?
+
+4. Deployment readiness: Is this model ready for production?
+   - Monitoring requirements
+   - Retraining schedule
+   - Known limitations
+
+Write your justification here...
+
+-->
+
+## Alternative Considerations
+
+<!-- TODO: Under what circumstances would you recommend a different model? -->
+
+---
+
+# Conclusion
+
+<!-- TODO: Summarize key findings from this comprehensive comparison -->
+
+---
+
+# Session Information
+
+```{r session_info}
+sessionInfo()
+```

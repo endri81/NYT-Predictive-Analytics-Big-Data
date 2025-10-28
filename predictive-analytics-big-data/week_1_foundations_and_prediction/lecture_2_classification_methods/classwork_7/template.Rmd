@@ -1,0 +1,358 @@
+---
+title: "Classwork 7: Production Deployment Planning"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+# Setup
+
+```{r libraries}
+library(tidyverse)
+library(glmnet)
+library(kableExtra)
+
+# Load production data
+production_data <- read_csv("production_simulation.csv")
+
+# Load pre-trained model
+ridge_model <- readRDS("production_model.rds")
+
+# Load training statistics for comparison
+training_stats <- readRDS("training_stats.rds")
+
+# Set seed for reproducibility
+set.seed(123)
+```
+
+---
+
+# Part 1: Production Performance Evaluation
+
+## Load and Score Production Data
+
+```{r score-production}
+# Prepare feature matrix
+# TODO: Extract features and prepare matrix format
+
+# Generate predictions
+# TODO: Use ridge_model to score production data
+
+# Calculate performance metrics
+# TODO: Compute RMSE, MAE, R²
+```
+
+## Overall Performance Comparison
+
+```{r performance-table}
+# TODO: Create comparison table
+# Columns: Metric | Validation | Production | Change (%)
+# Metrics: RMSE, MAE, R²
+```
+
+**Performance Summary:**
+
+[Write 2-3 sentences describing overall performance degradation. Is the model still acceptable? Which metrics degraded most?]
+
+## Segment Analysis
+
+```{r segment-performance}
+# TODO: Calculate RMSE by product category
+
+# TODO: Calculate RMSE by price tier (quantile-based groups)
+
+# TODO: Calculate RMSE by brand (if available)
+
+# TODO: Identify worst-performing segments
+```
+
+```{r segment-visualization}
+# TODO: Create bar plot showing RMSE by segment
+# Compare to overall production RMSE
+```
+
+**Segment Findings:**
+
+[Write 3-4 sentences identifying which segments show severe degradation and potential explanations.]
+
+## Error Distribution Analysis
+
+```{r error-analysis}
+# TODO: Calculate prediction errors
+
+# TODO: Compute error percentiles (50th, 75th, 90th, 95th, 99th)
+
+# TODO: Identify products with extreme errors (>$50)
+```
+
+**Degradation Assessment:**
+
+[Write 2-3 sentences on whether degradation is uniform or concentrated. What does this tell you about deployment risk?]
+
+---
+
+# Part 2: Feature Drift Analysis
+
+## Continuous Feature Drift
+
+```{r feature-drift}
+# TODO: For each continuous feature, calculate:
+# - Mean in training vs production
+# - SD in training vs production  
+# - Percentage change in mean
+# - Percentage change in SD
+
+# TODO: Flag features with >20% mean shift or >30% SD change
+```
+
+```{r drift-visualization}
+# TODO: Create scatter plot showing mean shift (x) vs SD change (y)
+# Color points by severity: green (acceptable), yellow (moderate), red (severe)
+# Add reference lines at 20% and 30% thresholds
+```
+
+**Drift Summary:**
+
+[Write 2-3 sentences listing the most drifted features and their shift magnitudes.]
+
+## Missing Value Analysis
+
+```{r missing-analysis}
+# TODO: Calculate missing rate by feature in training data
+
+# TODO: Calculate missing rate by feature in production data
+
+# TODO: Compute increase in missing rates
+
+# TODO: Flag features with >10% missing rate increase
+```
+
+```{r missing-visualization}
+# TODO: Create comparison plot showing training vs production missing rates
+# Highlight features exceeding 15% total missing rate
+```
+
+**Missing Value Findings:**
+
+[Write 2-3 sentences on which features have elevated missing rates and whether this correlates with performance degradation.]
+
+## High-Risk Features
+
+```{r risk-features}
+# TODO: Create summary table of high-risk features
+# Columns: Feature | Mean Shift (%) | SD Change (%) | Missing Increase (%) | Risk Level
+# Include only features exceeding at least one threshold
+```
+
+**Risk Assessment:**
+
+[Write 3-4 sentences on how many features show problematic drift and whether this explains performance degradation. Should retraining be triggered?]
+
+---
+
+# Part 3: Monitoring Dashboard Design
+
+## Dashboard Metrics Specification
+
+```{r dashboard-metrics}
+# TODO: Create metrics tracking table
+# Columns: Metric | Current Value | Threshold (Yellow) | Threshold (Red) | Alert Status
+# Include: RMSE, MAE, Mean Feature Drift, Max Feature Drift, Missing Rate, Prediction Volume
+
+# TODO: Calculate current alert status for each metric
+```
+
+## Time-Series Monitoring (Simulated)
+
+```{r timeseries-simulation}
+# TODO: Simulate 30 days of RMSE values showing gradual drift
+# Days 1-10: RMSE around $8.5
+# Days 11-20: RMSE around $9.2  
+# Days 21-30: RMSE around $10.5
+
+# TODO: Plot time series with threshold lines for yellow ($9.50) and red ($10.00) alerts
+```
+
+## Feature Drift Dashboard
+
+```{r drift-dashboard}
+# TODO: Create heatmap showing feature drift over time (simulated)
+# Rows: Top 20 features by importance
+# Columns: Days (1-30)
+# Color: Drift magnitude
+```
+
+**Dashboard Design Summary:**
+
+[Write 2-3 sentences describing how this dashboard enables proactive monitoring and early detection of issues.]
+
+---
+
+# Part 4: Retraining Strategy
+
+## Retraining Schedule
+
+```{r retraining-schedule}
+# TODO: Create retraining options comparison table
+# Columns: Schedule | Frequency | Annual Cost | Pros | Cons
+# Rows: Weekly, Bi-weekly, Monthly, Triggered-only
+```
+
+**Recommended Schedule:**
+
+[Write 2-3 sentences justifying your recommended retraining frequency based on drift severity and costs.]
+
+## Retraining Triggers
+
+```{r trigger-specification}
+# TODO: Create trigger specification table
+# Columns: Trigger Condition | Threshold | Action | Priority
+# Examples: RMSE degradation >15%, Feature drift >30%, Missing rate >20%
+```
+
+## Retraining Cost Analysis
+
+```{r cost-analysis}
+# TODO: Calculate annual costs for different strategies
+# Include: Data scientist time, computational resources, testing/validation
+# Consider: Scheduled retraining + estimated triggered retraining
+
+# Weekly: 52 retrains/year
+# Monthly: 12 retrains/year  
+# Triggered: Estimated based on current drift rate
+```
+
+**Cost-Benefit Assessment:**
+
+[Write 2-3 sentences weighing retraining costs against risk of degraded model performance. What's optimal?]
+
+---
+
+# Part 5: Risk Mitigation Plan
+
+## Risk Identification Matrix
+
+```{r risk-matrix}
+# TODO: Create risk matrix table
+# Columns: Risk | Likelihood | Impact | Severity Score | Mitigation Strategy
+# Risks: Data pipeline failure, Feature drift, Model bugs, Infrastructure outage, 
+#        Data quality issues, Correlation structure changes
+```
+
+## Rollback Procedures
+
+**Rollback Decision Criteria:**
+
+[Write a bulleted list of specific conditions that would trigger model rollback, with quantitative thresholds.]
+
+**Rollback Process:**
+
+[Write 4-5 sentences describing step-by-step rollback procedures including who approves, how quickly it occurs, and how to communicate to stakeholders.]
+
+## Incident Response Plan
+
+```{r incident-response}
+# TODO: Create incident response table
+# Columns: Alert Level | Response Time | Responsible Team | Actions | Escalation Path
+# Levels: Green (normal), Yellow (investigate), Red (immediate action)
+```
+
+**Communication Protocols:**
+
+[Write 2-3 sentences on how alerts are communicated and who is notified at each severity level.]
+
+---
+
+# Part 6: Deployment Documentation
+
+## Deployment Summary Memo
+
+**TO:** VP of Engineering  
+**FROM:** [Your Name], Senior Data Scientist  
+**DATE:** `r Sys.Date()`  
+**RE:** Ridge Regression Pricing Model - Production Deployment Plan
+
+### Model Specifications
+
+[Write 1 paragraph describing model type, features, training approach, and performance benchmarks.]
+
+### Production Performance
+
+[Write 1 paragraph summarizing production evaluation findings, including current RMSE, degradation level, and segment-specific issues.]
+
+### Monitoring Plan
+
+[Write 1 paragraph describing monitoring metrics, alert thresholds, dashboard design, and review frequency.]
+
+### Retraining Strategy
+
+[Write 1 paragraph specifying retraining schedule, triggers, costs, and expected maintenance requirements.]
+
+### Risk Mitigation
+
+[Write 1 paragraph outlining key risks, mitigation strategies, rollback procedures, and incident response protocols.]
+
+### Deployment Recommendation
+
+[Write 2-3 sentences with your deployment recommendation: proceed, proceed with conditions, or delay. Justify based on evidence from your analysis.]
+
+---
+
+## Critical Feature Requirements
+
+```{r feature-requirements}
+# TODO: Create feature requirements table
+# Top 10 features by coefficient magnitude
+# Columns: Feature | Coefficient | Expected Range | Acceptable Missing (%) | Latency Budget (ms)
+```
+
+## Maintenance Calendar
+
+```{r maintenance-calendar}
+# TODO: Create maintenance schedule table
+# Columns: Activity | Frequency | Responsible Party | Estimated Duration
+# Include: Performance reviews, retraining, audits, architecture reviews
+```
+
+---
+
+# Summary and Key Learnings
+
+## What I Learned
+
+1. Production deployment requires...
+
+2. Feature drift can...
+
+3. Monitoring infrastructure must...
+
+## Critical Success Factors
+
+[Write 3-4 sentences on what determines successful production deployment of regularized models.]
+
+## Recommendations for Future Deployments
+
+[Write 2-3 sentences on lessons learned that would improve future model deployments.]
+
+---
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```
