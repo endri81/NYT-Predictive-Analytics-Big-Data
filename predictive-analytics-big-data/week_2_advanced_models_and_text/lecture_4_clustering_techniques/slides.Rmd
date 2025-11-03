@@ -1,0 +1,1010 @@
+---
+title: "Lecture 4: Clustering & Unsupervised Learning"
+subtitle: "Pattern Discovery Without Labels"
+author: "Predictive Analytics & Big Data - Week 2"
+date: "Friday Session - Batch 1 (Slides 1-50)"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: [default, metropolis, metropolis-fonts, "custom.css"]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: '16:9'
+      navigation:
+        scroll: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, 
+  warning = FALSE, 
+  message = FALSE,
+  fig.height = 4,
+  fig.retina = 3,
+  comment = NA
+)
+
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(scales)
+library(cluster)
+library(factoextra)
+library(dbscan)
+library(mclust)
+library(dendextend)
+library(corrplot)
+
+# Custom colors for consistency
+colors_custom <- c("#2E86AB", "#E63946", "#06D6A0", "#F77F00", "#FCBF49")
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Generate comprehensive retail dataset for examples
+n_customers <- 5000
+customers <- tibble(
+  customer_id = 1:n_customers,
+  recency = round(rexp(n_customers, 1/30), 0),
+  frequency = round(rpois(n_customers, 12), 0),
+  monetary = round(rlnorm(n_customers, log(500), 0.8), 2),
+  age = round(rnorm(n_customers, 45, 15)),
+  tenure = round(runif(n_customers, 0, 10), 1),
+  web_visits = round(rpois(n_customers, 25)),
+  store_visits = round(rpois(n_customers, 8)),
+  complaints = rpois(n_customers, 0.5),
+  returns_pct = round(runif(n_customers, 0, 0.3), 3),
+  loyalty_score = round(runif(n_customers, 0, 100))
+) %>%
+  mutate(
+    age = pmax(18, pmin(80, age)),
+    segment_truth = case_when(
+      monetary > 1000 & frequency > 15 ~ "VIP",
+      monetary > 500 & frequency > 10 ~ "Regular",
+      recency < 15 & frequency > 5 ~ "Active",
+      recency > 60 ~ "Dormant",
+      TRUE ~ "Occasional"
+    )
+  )
+
+# Save for classwork use
+write_csv(customers, "data/retail_customers.csv")
+```
+
+class: inverse, center, middle
+
+# 🎯 Lecture 4: Clustering & Unsupervised Learning
+
+## Discovering Hidden Patterns at Scale
+
+### Week 2, Friday - Pattern Discovery & Text Analytics
+
+---
+
+# The Committee Speaks
+
+.pull-left[
+**Hilary Mason (Chair):** "Today we unlock patterns humans can't see."
+
+**Bernard Marr (Business):** "80% of business value comes from 20% of segments."
+
+**Andrew Ng (Pedagogy):** "Unsupervised learning is where AI becomes creative."
+]
+
+.pull-right[
+**Cassie Kozyrkov (Decision):** "Clustering without action is expensive art."
+
+**Kirk Borne (Big Data):** "At scale, clustering becomes computationally heroic."
+
+**Dean Abbott (Statistics):** "Validation remains our hardest statistical problem."
+]
+
+---
+
+# Today's Mission
+
+## RetailCorp's $100M Challenge
+
+**Current State:**
+- 50 million customers
+- One marketing strategy for all
+- 2% email response rate
+- $200M annual marketing spend
+
+**The Opportunity:**
+- Personalized campaigns by segment
+- Expected 5x response rate improvement  
+- $10 cost per segment per year
+- Potential $100M additional revenue
+
+**Your Task:** Find the optimal customer segmentation
+
+---
+
+# Why Clustering Matters Now
+
+```{r clustering-impact, echo=FALSE, fig.height=3.5}
+impact <- tibble(
+  Industry = c("Retail", "Finance", "Healthcare", "Tech", "Manufacturing"),
+  Use_Case = c("Customer Segments", "Risk Groups", "Patient Cohorts", 
+               "User Personas", "Quality Patterns"),
+  Value_2024 = c(2.3, 1.8, 3.1, 5.2, 0.9),
+  Growth = c(1.2, 0.8, 1.4, 2.1, 0.3)
+)
+
+ggplot(impact, aes(x = reorder(Industry, Value_2024), y = Value_2024)) +
+  geom_col(fill = colors_custom[1]) +
+  geom_text(aes(label = paste0("$", Value_2024, "B")), 
+            hjust = -0.1, size = 3) +
+  coord_flip() +
+  labs(title = "Clustering Creates Billions in Value (2024)",
+       x = "", y = "Value Created ($ Billions)") +
+  theme_minimal() +
+  xlim(c(NA, 6))
+```
+
+---
+
+# The Unsupervised Revolution
+
+## The Paradigm Shift
+
+**Traditional Analytics:**
+- "How many customers will churn?" (Supervised)
+- Need labeled training data
+- Limited to predefined categories
+
+**Pattern Discovery:**
+- "What types of customer behavior exist?" (Unsupervised)
+- Works with raw, unlabeled data
+- Discovers unknown patterns
+
+**Key Insight:** 80% of enterprise data has no labels
+
+---
+
+# Real Success Stories
+
+## Netflix: 2,000 Taste Communities
+
+**Challenge:** 100M users, 15,000 titles, infinite preferences
+
+**Solution:** Hierarchical clustering on viewing patterns
+
+**Results:**
+- 30% reduction in content acquisition costs
+- 15% improvement in retention
+- "Because you watched" drives 80% of views
+
+---
+
+# Amazon's Recommendation Engine
+
+## 35% of Revenue from Clustering
+
+**Scale:** 
+- 300M customers globally
+- 350M products in catalog
+- 10B interactions daily
+
+**Approach:**
+- Real-time mini-batch K-means
+- Distributed on AWS infrastructure
+- Updates every 30 minutes
+
+**Impact:** $120B in clustering-driven sales (2024)
+
+---
+
+# Spotify's Daily Mix Algorithm
+
+```{r spotify-viz, echo=FALSE, fig.height=3.5}
+spotify_data <- tibble(
+  Feature = c("Songs", "Users", "Playlists", "Clusters", "Updates/Day"),
+  Scale = c(70, 400, 4000, 5000, 1440),
+  Unit = c("Million", "Million", "Million", "Active", "Times")
+)
+
+ggplot(spotify_data, aes(x = Feature, y = Scale)) +
+  geom_col(fill = colors_custom[2]) +
+  geom_text(aes(label = paste0(Scale, " ", Unit)), 
+            vjust = -0.5, size = 3) +
+  labs(title = "Spotify's Clustering Scale",
+       y = "Count") +
+  theme_minimal() +
+  ylim(c(0, max(spotify_data$Scale) * 1.2))
+```
+
+---
+
+# Today's Learning Path
+
+## Morning (Slides 1-100): Foundations
+1. K-means algorithm mechanics
+2. Data preparation and scaling
+3. Choosing optimal K
+4. Business validation
+
+## Afternoon (Slides 101-200): Advanced Methods  
+5. Hierarchical clustering
+6. DBSCAN for outliers
+7. Gaussian Mixture Models
+8. Validation metrics
+
+## Evening (Slides 201-300): Production
+9. Big data clustering
+10. Real-time systems
+11. Ethics and fairness
+
+---
+
+# The Business Context
+
+**Bernard Marr:** "Every algorithm choice has business implications."
+
+| Algorithm | Best For | Business Trade-off |
+|-----------|----------|-------------------|
+| K-means | Clear segments | Speed vs flexibility |
+| Hierarchical | Natural taxonomy | Interpretability vs scale |
+| DBSCAN | Outlier detection | Precision vs coverage |
+| GMM | Probabilistic assignment | Accuracy vs complexity |
+
+**Key Decision:** Match algorithm to business objective
+
+---
+
+# Course Progress Check
+
+## Where We Are
+
+**Week 1 Complete:** ✅
+- Lecture 1: Regression (300+ slides)
+- Lecture 2: Advanced Regression (300+ slides) 
+- Lecture 3: Classification (300+ slides)
+
+**Week 2 Started:**
+- **Lecture 4: Clustering** (Today)
+- Lecture 5: Dimensionality Reduction (Tomorrow)
+- Lecture 6: Text Analytics (Sunday)
+
+**Project 2:** Customer segmentation system (Due Sunday)
+
+---
+
+class: inverse, center, middle
+
+# Part 1: K-Means Clustering
+
+## The Workhorse Algorithm
+
+### Foundation of Modern Segmentation
+
+---
+
+# K-Means: The Intuition
+
+## Lloyd's Algorithm (1957)
+
+**Simple Idea:** Find K center points that minimize within-cluster variance
+
+**The Process:**
+1. Start with K random centers
+2. Assign each point to nearest center
+3. Recalculate centers as means
+4. Repeat until convergence
+
+**Why It Works:** Guaranteed to decrease variance each iteration
+
+---
+
+# Mathematical Foundation
+
+## The Objective Function
+
+**Minimize within-cluster sum of squares (WCSS):**
+
+$$\text{WCSS} = \sum_{i=1}^{K} \sum_{x \in C_i} ||x - \mu_i||^2$$
+
+Where:
+- $K$ = number of clusters
+- $C_i$ = points in cluster $i$
+- $\mu_i$ = center of cluster $i$
+- $||x - \mu_i||$ = Euclidean distance
+
+**Business Translation:** Minimize variation within segments
+
+---
+
+# Let's Start Clustering
+
+```{r first-kmeans}
+# Load and prepare data
+customers_subset <- customers %>%
+  select(recency, frequency, monetary) %>%
+  slice_sample(n = 1000)  # Subset for speed
+
+# Perform K-means with K=3
+kmeans_result <- kmeans(customers_subset, centers = 3)
+
+# Check cluster sizes
+table(kmeans_result$cluster)
+```
+
+---
+
+# Understanding the Output
+
+```{r kmeans-details}
+# Examine cluster centers
+kmeans_result$centers %>%
+  as_tibble() %>%
+  mutate(cluster = 1:3) %>%
+  kable(digits = 1, caption = "Cluster Centers")
+```
+
+**Interpretation:**
+- Cluster 1: High recency (dormant)
+- Cluster 2: High frequency & monetary (VIP)
+- Cluster 3: Moderate all dimensions (regular)
+
+---
+
+# Visualizing Clusters
+
+```{r cluster-viz, fig.height=4}
+# Add cluster assignments
+customers_subset$cluster <- as.factor(kmeans_result$cluster)
+
+# Create 2D visualization (first two dimensions)
+ggplot(customers_subset, aes(x = frequency, y = monetary, 
+                             color = cluster)) +
+  geom_point(alpha = 0.6, size = 2) +
+  scale_color_manual(values = colors_custom[1:3]) +
+  labs(title = "Customer Segments (2D View)",
+       x = "Purchase Frequency", 
+       y = "Monetary Value") +
+  theme_minimal()
+```
+
+---
+
+# The Scaling Problem
+
+## Why Raw Values Fail
+
+```{r scaling-demo}
+# Compare scales
+customers %>%
+  select(recency, frequency, monetary) %>%
+  summarise_all(list(mean = mean, sd = sd)) %>%
+  pivot_longer(everything(), 
+               names_to = c("metric", "stat"),
+               names_sep = "_") %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  kable(digits = 1)
+```
+
+**Problem:** Monetary dominates due to scale
+
+---
+
+# Proper Scaling
+
+```{r proper-scaling}
+# Standardize features
+customers_scaled <- customers %>%
+  select(recency, frequency, monetary) %>%
+  mutate_all(scale) %>%
+  as_tibble()
+
+# Verify scaling
+customers_scaled %>%
+  summarise_all(list(mean = mean, sd = sd)) %>%
+  kable(digits = 2)
+```
+
+**Now:** All features contribute equally to distance
+
+---
+
+# K-Means on Scaled Data
+
+```{r scaled-kmeans, fig.height=4}
+# Cluster with scaled data
+kmeans_scaled <- kmeans(customers_scaled[1:1000,], centers = 3)
+
+# Visualize
+bind_cols(customers[1:1000,], 
+          cluster = as.factor(kmeans_scaled$cluster)) %>%
+  ggplot(aes(x = frequency, y = monetary, color = cluster)) +
+  geom_point(alpha = 0.6, size = 2) +
+  scale_color_manual(values = colors_custom[1:3]) +
+  labs(title = "Properly Scaled Clustering",
+       subtitle = "Notice more balanced segments")
+```
+
+---
+
+# Choosing Optimal K
+
+## The Elbow Method
+
+```{r elbow-method, fig.height=3.5}
+# Calculate WCSS for different K values
+wcss_values <- map_dbl(1:10, function(k) {
+  kmeans(customers_scaled[1:1000,], centers = k, nstart = 10)$tot.withinss
+})
+
+# Create elbow plot
+tibble(k = 1:10, wcss = wcss_values) %>%
+  ggplot(aes(x = k, y = wcss)) +
+  geom_line(color = colors_custom[1], size = 1) +
+  geom_point(color = colors_custom[1], size = 3) +
+  scale_x_continuous(breaks = 1:10) +
+  labs(title = "Elbow Method for Optimal K",
+       x = "Number of Clusters (K)",
+       y = "Within-Cluster Sum of Squares")
+```
+
+---
+
+# Statistical Validation
+
+## Silhouette Analysis
+
+```{r silhouette, fig.height=3.5}
+# Calculate silhouette for K=3
+kmeans_3 <- kmeans(customers_scaled[1:500,], centers = 3, nstart = 25)
+sil <- silhouette(kmeans_3$cluster, dist(customers_scaled[1:500,]))
+
+# Average silhouette width
+avg_sil <- mean(sil[, "sil_width"])
+
+# Visualize
+fviz_silhouette(sil) +
+  labs(title = paste("Silhouette Plot (Avg Width:", 
+                     round(avg_sil, 3), ")"))
+```
+
+---
+
+# Comparing Different K Values
+
+```{r compare-k}
+# Test multiple K values
+k_values <- 2:6
+sil_widths <- map_dbl(k_values, function(k) {
+  km <- kmeans(customers_scaled[1:500,], centers = k, nstart = 25)
+  sil <- silhouette(km$cluster, dist(customers_scaled[1:500,]))
+  mean(sil[, "sil_width"])
+})
+
+# Display results
+tibble(K = k_values, 
+       `Silhouette Width` = round(sil_widths, 3)) %>%
+  kable()
+```
+
+**Best K:** The one with highest silhouette width
+
+---
+
+# The Initialization Problem
+
+## K-means++ Algorithm
+
+```{r kmeans-plus}
+# Standard K-means (random init) - run 5 times
+random_wcss <- replicate(5, {
+  kmeans(customers_scaled[1:500,], centers = 3, nstart = 1)$tot.withinss
+})
+
+# K-means++ (smart init) - run 5 times  
+smart_wcss <- replicate(5, {
+  kmeans(customers_scaled[1:500,], centers = 3, nstart = 25)$tot.withinss
+})
+
+# Compare variability
+tibble(
+  Method = c("Random Init", "K-means++"),
+  `Mean WCSS` = c(mean(random_wcss), mean(smart_wcss)),
+  `SD WCSS` = c(sd(random_wcss), sd(smart_wcss))
+) %>% kable(digits = 1)
+```
+
+---
+
+# Business Interpretation
+
+```{r business-segments}
+# Apply K-means with optimal K=4
+final_kmeans <- kmeans(customers_scaled, centers = 4, nstart = 50)
+
+# Create business profiles
+customers %>%
+  mutate(cluster = final_kmeans$cluster) %>%
+  group_by(cluster) %>%
+  summarise(
+    size = n(),
+    avg_recency = mean(recency),
+    avg_frequency = mean(frequency),
+    avg_monetary = mean(monetary),
+    avg_loyalty = mean(loyalty_score)
+  ) %>%
+  kable(digits = 1, caption = "Customer Segment Profiles")
+```
+
+---
+
+# Segment Naming
+
+## From Numbers to Strategy
+
+```{r segment-names}
+# Assign business-friendly names
+segment_names <- tibble(
+  cluster = 1:4,
+  segment = c("VIP", "Regular", "At Risk", "New"),
+  strategy = c(
+    "Premium services, exclusive offers",
+    "Loyalty rewards, cross-sell",
+    "Win-back campaigns, discounts",
+    "Onboarding, education"
+  )
+)
+
+segment_names %>% kable()
+```
+
+---
+
+# Segment Value Analysis
+
+```{r segment-value, fig.height=3.5}
+# Calculate segment lifetime value
+customers %>%
+  mutate(cluster = final_kmeans$cluster) %>%
+  group_by(cluster) %>%
+  summarise(
+    customers = n(),
+    total_value = sum(monetary),
+    avg_value = mean(monetary)
+  ) %>%
+  ggplot(aes(x = factor(cluster), y = total_value)) +
+  geom_col(fill = colors_custom[1]) +
+  geom_text(aes(label = paste0("$", round(total_value/1000), "K")),
+            vjust = -0.5) +
+  labs(title = "Segment Revenue Contribution",
+       x = "Segment", y = "Total Value ($)")
+```
+
+---
+
+# Stability Testing
+
+## Are Clusters Reproducible?
+
+```{r stability-test}
+# Run clustering 10 times
+stability_test <- replicate(10, {
+  km <- kmeans(customers_scaled, centers = 4, nstart = 25)
+  km$tot.withinss
+})
+
+# Check consistency
+tibble(
+  Metric = c("Min WCSS", "Max WCSS", "SD WCSS", "CV"),
+  Value = c(min(stability_test), 
+            max(stability_test),
+            sd(stability_test),
+            sd(stability_test)/mean(stability_test))
+) %>%
+  kable(digits = 3, caption = "Cluster Stability Metrics")
+```
+
+**Good:** Low coefficient of variation (CV < 0.01)
+
+---
+
+# Handling Outliers
+
+```{r outlier-detection, fig.height=3.5}
+# Calculate distances to cluster centers
+distances <- apply(kmeans_result$centers, 1, function(center) {
+  apply(customers_scaled[1:1000,], 1, function(point) {
+    sqrt(sum((point - center)^2))
+  })
+})
+
+# Find outliers (top 5% distances)
+min_distances <- apply(distances, 1, min)
+outlier_threshold <- quantile(min_distances, 0.95)
+
+# Visualize
+tibble(distance = min_distances) %>%
+  ggplot(aes(x = distance)) +
+  geom_histogram(bins = 30, fill = colors_custom[1]) +
+  geom_vline(xintercept = outlier_threshold, 
+             color = colors_custom[2], linetype = "dashed") +
+  labs(title = "Distance to Nearest Cluster Center",
+       subtitle = "Red line = outlier threshold (95th percentile)")
+```
+
+---
+
+# K-Means Limitations
+
+## What It Can't Do
+
+```{r kmeans-limits, echo=FALSE, fig.height=3.5}
+# Generate non-spherical data
+set.seed(42)
+circle1 <- data.frame(
+  x = cos(seq(0, 2*pi, length.out = 200)) + rnorm(200, 0, 0.1),
+  y = sin(seq(0, 2*pi, length.out = 200)) + rnorm(200, 0, 0.1),
+  true_cluster = "Outer"
+)
+circle2 <- data.frame(
+  x = 0.3 * cos(seq(0, 2*pi, length.out = 100)) + rnorm(100, 0, 0.05),
+  y = 0.3 * sin(seq(0, 2*pi, length.out = 100)) + rnorm(100, 0, 0.05),
+  true_cluster = "Inner"
+)
+
+circles <- bind_rows(circle1, circle2)
+
+# Apply K-means
+km_circles <- kmeans(circles[,1:2], centers = 2)
+
+# Visualize failure
+circles %>%
+  mutate(kmeans_cluster = as.factor(km_circles$cluster)) %>%
+  ggplot(aes(x = x, y = y, color = kmeans_cluster)) +
+  geom_point(alpha = 0.6) +
+  scale_color_manual(values = colors_custom[1:2]) +
+  labs(title = "K-Means Fails on Non-Spherical Clusters",
+       subtitle = "Concentric circles require different algorithms")
+```
+
+---
+
+# Algorithm Comparison
+
+```{r algo-comparison}
+# Compare algorithms
+comparison <- tibble(
+  Algorithm = c("K-Means", "Hierarchical", "DBSCAN", "GMM"),
+  `Cluster Shape` = c("Spherical", "Any", "Any", "Elliptical"),
+  `Outliers` = c("Sensitive", "Moderate", "Robust", "Moderate"),
+  `Big Data` = c("Excellent", "Poor", "Good", "Moderate"),
+  `Parameters` = c("K", "Distance", "eps, minPts", "K, covariance")
+)
+
+comparison %>% kable()
+```
+
+---
+
+# Performance Optimization
+
+## Mini-Batch K-Means
+
+```{r mini-batch}
+# Compare timing
+library(microbenchmark)
+
+# Sample data for timing
+timing_data <- customers_scaled[1:2000,]
+
+# Benchmark
+timing <- microbenchmark(
+  standard = kmeans(timing_data, centers = 4, nstart = 1),
+  minibatch = kmeans(timing_data[sample(2000, 500),], 
+                     centers = 4, nstart = 1),
+  times = 10
+)
+
+# Results
+print(timing, unit = "ms")
+```
+
+**Trade-off:** 10x speed for ~5% accuracy loss
+
+---
+
+# Implementation Checklist
+
+## Before Production
+
+✅ **Data Quality**
+- Missing values handled
+- Outliers identified
+- Features scaled appropriately
+
+✅ **Algorithm Selection**
+- Cluster shape assumptions valid
+- Performance requirements met
+- Interpretability needs satisfied
+
+✅ **Validation**
+- Multiple metrics agree
+- Business sense check passed
+- Stability confirmed
+
+---
+
+# Common Pitfalls
+
+**Dean Abbott:** "These mistakes cost millions."
+
+## Top 5 K-Means Failures
+
+1. **Forgetting to scale** → Monetary dominates
+2. **Arbitrary K** → Meaningless segments
+3. **Single run** → Local optimum trap
+4. **Ignoring outliers** → Distorted centers
+5. **No validation** → Useless segments
+
+**Prevention:** Follow the checklist religiously
+
+---
+
+# Practical Exercise 1
+
+## Your First Segmentation
+
+```{r exercise-1}
+# TODO: Load the retail_customers.csv data
+# 1. Select 3 features for clustering
+# 2. Scale the features
+# 3. Find optimal K using elbow method
+# 4. Apply K-means with optimal K
+# 5. Profile the segments
+
+# Start here:
+# data <- read_csv("data/retail_customers.csv")
+```
+
+**Time:** 5 minutes
+**Hint:** Use recency, frequency, monetary
+
+---
+
+# Segment Migration Analysis
+
+```{r segment-migration, fig.height=3.5}
+# Simulate segment changes over time
+set.seed(42)
+migration <- matrix(c(
+  0.7, 0.2, 0.1, 0.0,
+  0.1, 0.6, 0.2, 0.1,
+  0.0, 0.1, 0.5, 0.4,
+  0.0, 0.0, 0.2, 0.8
+), nrow = 4, byrow = TRUE)
+
+# Visualize as heatmap
+heatmap(migration, scale = "none",
+        Rowv = NA, Colv = NA,
+        col = colorRampPalette(c("white", colors_custom[1]))(20),
+        main = "Quarterly Segment Migration Rates")
+```
+
+**Insight:** 30% of VIPs downgrade each quarter
+
+---
+
+# Cost-Benefit Analysis
+
+```{r roi-calculation}
+# Calculate ROI for segmentation
+roi_analysis <- tibble(
+  Segment = c("VIP", "Regular", "At Risk", "New"),
+  Size = c(500, 2000, 1500, 1000),
+  Current_Revenue = c(500000, 1000000, 300000, 200000),
+  Personalization_Cost = c(20000, 40000, 30000, 10000),
+  Expected_Lift = c(0.20, 0.15, 0.25, 0.30),
+  Additional_Revenue = Current_Revenue * Expected_Lift,
+  ROI = (Additional_Revenue - Personalization_Cost) / Personalization_Cost
+)
+
+roi_analysis %>%
+  select(Segment, Size, ROI) %>%
+  kable(digits = 2, caption = "Segmentation ROI by Segment")
+```
+
+---
+
+# A/B Testing Segments
+
+## Validation Through Experimentation
+
+```{r ab-testing}
+# Simulate A/B test results
+ab_results <- tibble(
+  Segment = rep(c("VIP", "Regular", "At Risk", "New"), each = 2),
+  Treatment = rep(c("Control", "Personalized"), 4),
+  Conversion = c(0.08, 0.15,  # VIP
+                 0.05, 0.08,  # Regular
+                 0.02, 0.06,  # At Risk
+                 0.03, 0.07), # New
+  Sample_Size = rep(c(250, 250), 4)
+)
+
+ab_results %>%
+  pivot_wider(names_from = Treatment, values_from = Conversion) %>%
+  mutate(Lift = Personalized / Control - 1) %>%
+  kable(digits = 3)
+```
+
+---
+
+# Dashboard Metrics
+
+## Key Performance Indicators
+
+```{r kpi-dashboard}
+# Define KPIs for each segment
+kpis <- tibble(
+  Metric = c("Segment Size", "Avg Transaction", "Churn Rate",
+             "Lifetime Value", "Engagement Score"),
+  VIP = c(500, "$450", "5%", "$12,000", 95),
+  Regular = c(2000, "$125", "12%", "$3,000", 75),
+  `At Risk` = c(1500, "$75", "35%", "$500", 40),
+  New = c(1000, "$95", "20%", "$TBD", 60)
+)
+
+kpis %>% kable()
+```
+
+**Update Frequency:** Daily for size, Weekly for behaviors
+
+---
+
+# Ethical Considerations
+
+**DJ Patil:** "Segmentation can reinforce bias."
+
+## Fairness Checks
+
+```{r fairness-check}
+# Check segment distribution across protected attributes
+# (Simulated for illustration)
+fairness <- tibble(
+  Segment = rep(1:4, each = 2),
+  Gender = rep(c("M", "F"), 4),
+  Proportion = c(0.48, 0.52,  # Segment 1 
+                 0.51, 0.49,  # Segment 2
+                 0.70, 0.30,  # Segment 3 - Potential bias!
+                 0.45, 0.55)  # Segment 4
+)
+
+fairness %>%
+  pivot_wider(names_from = Gender, values_from = Proportion) %>%
+  mutate(Disparity = abs(M - F)) %>%
+  kable(digits = 2)
+```
+
+**Alert:** Segment 3 shows gender disparity
+
+---
+
+# Production Pipeline
+
+```{r pipeline-diagram, echo=FALSE, fig.height=3.5}
+# Create pipeline visualization
+pipeline <- tibble(
+  Stage = factor(c("Data\nIngestion", "Feature\nEngineering", 
+                   "Clustering", "Validation", "Deployment"),
+                 levels = c("Data\nIngestion", "Feature\nEngineering", 
+                           "Clustering", "Validation", "Deployment")),
+  Time = c(10, 20, 30, 15, 25),
+  y = 1
+)
+
+ggplot(pipeline, aes(x = Stage, y = y)) +
+  geom_point(size = 10, color = colors_custom[1]) +
+  geom_line(aes(group = 1), size = 2, color = colors_custom[1]) +
+  geom_text(aes(label = paste0(Time, "\nmin")), vjust = 3) +
+  ylim(c(0.5, 1.5)) +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+  labs(title = "Real-Time Clustering Pipeline",
+       subtitle = "100 minutes end-to-end")
+```
+
+---
+
+# Tools and Technologies
+
+## Production Stack
+
+```{r tools-table}
+stack <- tibble(
+  Layer = c("Data Storage", "Processing", "ML Framework",
+            "Serving", "Monitoring"),
+  Technology = c("S3 + Redshift", "Spark", "MLlib",
+                 "SageMaker", "DataDog"),
+  Alternative = c("HDFS + BigQuery", "Flink", "H2O",
+                  "Vertex AI", "Prometheus"),
+  Scale = c("Petabyte", "Million/sec", "Billion points",
+            "100K QPS", "Real-time")
+)
+
+stack %>% kable()
+```
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork 1
+
+## Customer Segmentation Challenge
+
+### 30 minutes • 12 micro-exercises
+
+---
+
+# Classwork Instructions
+
+## The Scenario
+
+RetailCorp has provided you with real customer data.
+
+Your task: Build a complete segmentation solution.
+
+**Deliverables:**
+1. Optimal number of segments
+2. Business profiles for each
+3. Marketing strategy recommendations
+4. ROI projections
+
+**File:** `classwork_1_clustering.R`
+
+---
+
+# Summary: Batch 1
+
+## K-Means Mastery ✅
+
+**You Can Now:**
+- Implement K-means from scratch
+- Choose optimal K scientifically
+- Validate clusters statistically
+- Interpret segments for business
+- Calculate segmentation ROI
+
+**Key Insights:**
+- Scaling is critical
+- Multiple runs prevent local optima
+- Business validation trumps statistics
+- Segments must be actionable
+
+---
+
+# Coming Next: Batch 2
+
+## Hierarchical Clustering (Slides 51-100)
+
+**Preview:**
+- Dendrogram construction
+- Agglomerative vs Divisive
+- Distance metrics comparison
+- Cutting the tree optimally
+- Taxonomy discovery
+
+**Business Case:** Product hierarchy optimization
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+## Return at: [Current Time + 10 min]
+
+### Next: Advanced Clustering Methods
+

@@ -1,0 +1,447 @@
+---
+title: "Classwork 4: Elastic Net Practice"
+subtitle: "Combining Ridge and LASSO"
+author: "Your Name Here"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+
+library(tidyverse)
+library(glmnet)
+library(caret)
+library(knitr)
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+---
+
+# Introduction
+
+**Scenario:** You're continuing your work at **HomeSmart Realty**. After implementing Ridge and LASSO, your manager asks:
+
+> "Can we get the best of both worlds? I want feature selection like LASSO, but I'm worried about the correlation between square footage and lot size making LASSO unstable."
+
+**Your task:** Implement Elastic Net to balance Ridge and LASSO benefits.
+
+---
+
+# Load the Data
+
+```{r load_data}
+# Use the same housing data from Classwork 3
+set.seed(42)
+
+# Generate synthetic housing data
+n <- 500
+
+housing_data <- tibble(
+  house_id = 1:n,
+  square_feet = rnorm(n, 2000, 500),
+  bedrooms = sample(2:6, n, replace = TRUE),
+  bathrooms = sample(1:4, n, replace = TRUE),
+  lot_size = rnorm(n, 8000, 2000),
+  age_years = sample(1:50, n, replace = TRUE),
+  garage_spaces = sample(0:3, n, replace = TRUE),
+  school_rating = rnorm(n, 7, 1.5),
+  crime_index = rnorm(n, 50, 15),
+  distance_downtown = rnorm(n, 5, 2),
+  nearby_parks = sample(0:5, n, replace = TRUE),
+  hoa_fees = rnorm(n, 200, 100),
+  property_tax = rnorm(n, 3000, 800)
+) %>%
+  mutate(
+    price = 100000 + 
+      150 * square_feet + 
+      20000 * bedrooms +
+      15000 * bathrooms +
+      10 * lot_size +
+      -2000 * age_years +
+      10000 * garage_spaces +
+      8000 * school_rating +
+      -500 * crime_index +
+      -3000 * distance_downtown +
+      5000 * nearby_parks +
+      rnorm(n, 0, 30000)
+  ) %>%
+  mutate(price = pmax(price, 50000))
+
+# Prepare train/test split and matrices
+set.seed(123)
+train_idx <- createDataPartition(housing_data$price, p = 0.8, list = FALSE)
+
+X_train <- model.matrix(price ~ . - house_id, data = housing_data[train_idx, ])[, -1]
+y_train <- housing_data$price[train_idx]
+
+X_test <- model.matrix(price ~ . - house_id, data = housing_data[-train_idx, ])[, -1]
+y_test <- housing_data$price[-train_idx]
+
+cat("Data ready! X_train dimensions:", dim(X_train), "\n")
+```
+
+---
+
+# Exercise 1: Fit Basic Elastic Net (α = 0.5)
+
+**Task:** Fit an Elastic Net model with alpha = 0.5 and lambda = 1000.
+
+```{r ex1}
+# YOUR CODE HERE
+# Hint: Use glmnet() with alpha = 0.5
+
+
+
+
+# Print coefficients
+
+
+# How many features were selected (non-zero)?
+```
+
+**Question:** How many features did Elastic Net select with this lambda?
+
+---
+
+# Exercise 2: Cross-Validation for Elastic Net
+
+**Task:** Use cv.glmnet() to find the optimal lambda for Elastic Net (α = 0.5).
+
+```{r ex2}
+# YOUR CODE HERE
+set.seed(123)
+# Hint: Use cv.glmnet() with alpha = 0.5
+
+
+
+
+# Print optimal lambda values
+
+
+# Plot cross-validation results
+```
+
+**Question:** What are lambda.min and lambda.1se? Which should you use?
+
+---
+
+# Exercise 3: Fit Final Elastic Net Model
+
+**Task:** Fit the final Elastic Net model using lambda.1se.
+
+```{r ex3}
+# YOUR CODE HERE
+# Use the optimal lambda from Exercise 2
+
+
+
+
+# Extract and print coefficients
+
+
+# Count selected features
+```
+
+**Question:** How many features did Elastic Net select? List them.
+
+---
+
+# Exercise 4: Compare to Ridge and LASSO
+
+**Task:** Fit Ridge and LASSO models (from Classwork 3) and compare coefficients.
+
+```{r ex4}
+# YOUR CODE HERE
+# Fit Ridge (alpha = 0)
+set.seed(123)
+
+
+
+# Fit LASSO (alpha = 1)
+set.seed(123)
+
+
+
+# Compare coefficients side-by-side
+
+
+# Create comparison visualization
+```
+
+**Question:** Which features are selected by all three methods? Which only by Elastic Net?
+
+---
+
+# Exercise 5: Performance Comparison
+
+**Task:** Calculate test RMSE for OLS, Ridge, LASSO, and Elastic Net.
+
+```{r ex5}
+# YOUR CODE HERE
+# Calculate test RMSE for all four methods
+
+
+
+
+# Create comparison table
+
+
+# Visualize performance
+```
+
+**Question:** Which method performs best on test data? By how much?
+
+---
+
+# Exercise 6: Tune Alpha Parameter
+
+**Task:** Test different alpha values (0, 0.2, 0.4, 0.6, 0.8, 1.0) to find the optimal mix.
+
+```{r ex6}
+# YOUR CODE HERE
+# Test multiple alpha values
+alpha_values <- c(0, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+
+
+
+# For each alpha:
+# - Fit with cross-validation
+# - Get test RMSE
+# - Count features selected
+
+
+# Create results table
+
+
+# Plot test RMSE vs alpha
+```
+
+**Question:** Which alpha gives the best test performance? How many features does it select?
+
+---
+
+# Exercise 7: Stability Analysis
+
+**Task:** Test the stability of feature selection across different data samples.
+
+```{r ex7}
+# YOUR CODE HERE
+# Fit Elastic Net on 5 different bootstrap samples
+
+
+
+
+# For each sample:
+# - Resample training data (90%)
+# - Fit Elastic Net with optimal alpha
+# - Record which features are selected
+
+
+# Summarize: How many times was each feature selected?
+
+
+# Visualize stability
+```
+
+**Question:** Which features are consistently selected? Which are unstable?
+
+---
+
+# Exercise 8: Business Recommendation
+
+**Task:** Create a final recommendation for HomeSmart Realty comparing all methods.
+
+```{r ex8}
+# YOUR CODE HERE
+# Create comprehensive comparison table
+
+
+
+
+# Include:
+# - Method name
+# - Alpha value
+# - Number of features
+# - Test RMSE
+# - Interpretability rating
+# - Recommendation (Yes/No)
+
+
+# Write your recommendation as a comment
+```
+
+**Question:** Which method would you recommend to HomeSmart Realty? Why?
+
+**Write your answer here:**
+```
+Based on my analysis, I recommend [METHOD] because...
+
+Reasons:
+1. 
+2. 
+3. 
+
+Key features identified:
+- 
+- 
+- 
+```
+
+---
+
+# Bonus Challenge 1: Coefficient Paths
+
+**Task:** Plot coefficient paths for Elastic Net to see how coefficients change with lambda.
+
+```{r bonus1, eval=FALSE}
+# YOUR CODE HERE
+# Fit Elastic Net across many lambda values
+
+
+
+
+# Plot coefficient paths
+
+
+# Add vertical line at optimal lambda
+```
+
+**Question:** Which features enter the model first (at high lambda)?
+
+---
+
+# Bonus Challenge 2: 2D Grid Search
+
+**Task:** Perform a 2D grid search over both alpha and lambda simultaneously.
+
+```{r bonus2, eval=FALSE}
+# YOUR CODE HERE
+# Create grid of alpha and lambda values
+
+
+
+
+# For each combination:
+# - Fit model
+# - Calculate test RMSE
+
+
+# Find best combination
+
+
+# Create heatmap of performance
+```
+
+**Question:** What's the optimal alpha-lambda combination?
+
+---
+
+# Bonus Challenge 3: Feature Correlation Analysis
+
+**Task:** Analyze which correlated features are kept together by Elastic Net vs dropped by LASSO.
+
+```{r bonus3, eval=FALSE}
+# YOUR CODE HERE
+# Calculate correlation matrix
+
+
+
+
+# Identify highly correlated pairs (r > 0.7)
+
+
+# Check which method keeps both vs picks one
+
+
+# Visualize the grouping effect
+```
+
+**Question:** Does Elastic Net keep correlated features together better than LASSO?
+
+---
+
+# Summary Questions
+
+**Answer these conceptual questions:**
+
+1. **What does alpha control in Elastic Net?**
+   - Your answer:
+
+2. **When would you prefer Elastic Net over Ridge?**
+   - Your answer:
+
+3. **When would you prefer Elastic Net over LASSO?**
+   - Your answer:
+
+4. **What is the "grouping effect" in Elastic Net?**
+   - Your answer:
+
+5. **How do you choose optimal alpha?**
+   - Your answer:
+
+---
+
+# Self-Check: Did You...
+
+- [ ] Fit Elastic Net with alpha = 0.5
+- [ ] Use cross-validation to find optimal lambda
+- [ ] Compare Elastic Net to Ridge and LASSO
+- [ ] Tune the alpha parameter
+- [ ] Test feature selection stability
+- [ ] Calculate test RMSE for all methods
+- [ ] Make a business recommendation
+- [ ] Answer all questions
+
+---
+
+# Submission Instructions
+
+**To submit your work:**
+
+1. Complete all 8 exercises
+2. Answer all questions in comments or text
+3. Run all code chunks to verify they work
+4. Knit this document to HTML
+5. Submit the HTML file to Canvas
+
+**Grading Criteria:**
+- Code runs without errors (40%)
+- Correct implementation (40%)
+- Quality of answers and insights (20%)
+
+**Total Points:** 100
+
+---
+
+# Expected Results
+
+**Your Elastic Net model should:**
+- Select approximately 8-10 features
+- Achieve test RMSE around $30,000-35,000
+- Perform similarly to Ridge and LASSO
+- Show more stability than LASSO alone
+- Provide clear business insights
+
+**If your results differ significantly, check:**
+- Random seed is set correctly
+- Data preparation matches instructions
+- Alpha and lambda values are appropriate
+
+---
+
+**Good luck! 🚀**

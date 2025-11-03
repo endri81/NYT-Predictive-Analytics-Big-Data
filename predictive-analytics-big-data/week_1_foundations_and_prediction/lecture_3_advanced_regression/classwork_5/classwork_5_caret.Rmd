@@ -1,0 +1,435 @@
+---
+title: "Classwork 5: Advanced Topics - caret Integration"
+subtitle: "Professional ML Workflows"
+author: "Your Name Here"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+
+library(tidyverse)
+library(glmnet)
+library(caret)
+library(knitr)
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+---
+
+# Introduction
+
+**Scenario:** You're now a senior data scientist at **HomeSmart Realty**. Your models (Ridge, LASSO, Elastic Net) work well, but your manager wants:
+
+> "Can you create a production-ready pipeline that:
+> 1. Automatically tunes hyperparameters
+> 2. Compares multiple models systematically
+> 3. Is easy to deploy and maintain"
+
+**Your task:** Use the `caret` package to create professional ML workflows.
+
+---
+
+# What is caret?
+
+**caret** = Classification And REgression Training
+
+**Key benefits:**
+- **Unified interface** for 238+ models
+- **Automatic tuning** via grid search
+- **Built-in cross-validation**
+- **Easy model comparison**
+- **Production-ready** workflows
+
+**Philosophy:** Learn one syntax, use any model!
+
+---
+
+# Load the Data
+
+```{r load_data}
+# Use the housing data from previous classworks
+set.seed(42)
+n <- 500
+
+housing_data <- tibble(
+  house_id = 1:n,
+  square_feet = rnorm(n, 2000, 500),
+  bedrooms = sample(2:6, n, replace = TRUE),
+  bathrooms = sample(1:4, n, replace = TRUE),
+  lot_size = rnorm(n, 8000, 2000),
+  age_years = sample(1:50, n, replace = TRUE),
+  garage_spaces = sample(0:3, n, replace = TRUE),
+  school_rating = rnorm(n, 7, 1.5),
+  crime_index = rnorm(n, 50, 15),
+  distance_downtown = rnorm(n, 5, 2),
+  nearby_parks = sample(0:5, n, replace = TRUE),
+  hoa_fees = rnorm(n, 200, 100),
+  property_tax = rnorm(n, 3000, 800)
+) %>%
+  mutate(
+    price = 100000 + 
+      150 * square_feet + 
+      20000 * bedrooms +
+      15000 * bathrooms +
+      10 * lot_size +
+      -2000 * age_years +
+      10000 * garage_spaces +
+      8000 * school_rating +
+      -500 * crime_index +
+      -3000 * distance_downtown +
+      5000 * nearby_parks +
+      rnorm(n, 0, 30000)
+  ) %>%
+  mutate(price = pmax(price, 50000))
+
+# Prepare matrices
+set.seed(123)
+train_idx <- createDataPartition(housing_data$price, p = 0.8, list = FALSE)
+
+X_train <- model.matrix(price ~ . - house_id, data = housing_data[train_idx, ])[, -1]
+y_train <- housing_data$price[train_idx]
+
+X_test <- model.matrix(price ~ . - house_id, data = housing_data[-train_idx, ])[, -1]
+y_test <- housing_data$price[-train_idx]
+
+cat("Data ready!\n")
+```
+
+---
+
+# Exercise 1: Set Up Training Control
+
+**Task:** Define how caret should train and validate models.
+
+```{r ex1}
+# YOUR CODE HERE
+# Create trainControl object
+# Hints:
+# - Use method = "cv" for cross-validation
+# - Use number = 10 for 10-fold CV
+# - Set search = "grid" for grid search
+
+
+
+
+# Print to verify
+```
+
+**Question:** What does trainControl specify?
+
+---
+
+# Exercise 2: Define Tuning Grid
+
+**Task:** Create a grid of alpha and lambda values for Elastic Net.
+
+```{r ex2}
+# YOUR CODE HERE
+# Create tuning grid
+# Hints:
+# - Use expand.grid()
+# - Alpha: 0, 0.2, 0.4, 0.6, 0.8, 1.0
+# - Lambda: 10^seq(5, -2, length = 50)
+
+
+
+
+# View first few rows
+
+
+# How many combinations total?
+```
+
+**Question:** How many alpha-lambda combinations will caret test?
+
+---
+
+# Exercise 3: Train Elastic Net with caret
+
+**Task:** Use caret's train() function to fit Elastic Net and find optimal hyperparameters.
+
+```{r ex3}
+# YOUR CODE HERE
+set.seed(123)
+# Use train() function
+# Hints:
+# - method = "glmnet"
+# - trControl = your training control
+# - tuneGrid = your tuning grid
+# - metric = "RMSE"
+
+# This may take 1-2 minutes...
+
+
+
+
+# Print results
+
+
+# What are the best hyperparameters?
+```
+
+**Question:** What alpha and lambda did caret select as optimal?
+
+---
+
+# Exercise 4: Visualize Tuning Results
+
+**Task:** Plot how performance varies across the parameter space.
+
+```{r ex4}
+# YOUR CODE HERE
+# Use plot() on your caret model
+
+
+
+
+# Try different plot types:
+# plot(model, plotType = "level")  # Heatmap
+# plot(model, plotType = "scatter") # Line plot
+```
+
+**Question:** What patterns do you see? Which alpha values work best?
+
+---
+
+# Exercise 5: Extract Variable Importance
+
+**Task:** Use caret's varImp() to identify the most important features.
+
+```{r ex5}
+# YOUR CODE HERE
+# Get variable importance
+
+
+
+
+# Print importance values
+
+
+# Plot importance
+
+
+# Top 5 features?
+```
+
+**Question:** What are the top 5 most important features?
+
+---
+
+# Exercise 6: Compare Multiple Models
+
+**Task:** Train and compare OLS, Ridge, LASSO, and Elastic Net using caret.
+
+```{r ex6}
+# YOUR CODE HERE
+# Train multiple models and compare
+
+# 1. Create a list to store models
+
+
+# 2. Train OLS (method = "lm")
+
+
+# 3. Train Ridge (method = "glmnet", alpha = 0)
+
+
+# 4. Train LASSO (method = "glmnet", alpha = 1)
+
+
+# 5. Train Elastic Net (method = "glmnet", tune alpha & lambda)
+
+
+# 6. Use resamples() to compare
+
+
+# 7. Print summary
+
+
+# 8. Create comparison plots
+```
+
+**Question:** Which model performs best according to cross-validation?
+
+---
+
+# Bonus Challenge 1: Extract Final Model
+
+**Task:** Extract the underlying glmnet model from caret and examine coefficients.
+
+```{r bonus1, eval=FALSE}
+# YOUR CODE HERE
+# Get the final model
+
+
+
+
+# Extract coefficients
+
+
+# Compare to manual glmnet
+```
+
+**Question:** Are the coefficients the same as manual glmnet?
+
+---
+
+# Bonus Challenge 2: Production Deployment Bundle
+
+**Task:** Create a complete bundle for production deployment.
+
+```{r bonus2, eval=FALSE}
+# YOUR CODE HERE
+# Create production bundle with:
+# - Trained model
+# - Best hyperparameters  
+# - Feature names
+# - Performance metrics
+# - Training date
+
+
+
+
+# Save to file
+
+
+# Test loading and predicting
+```
+
+**Question:** What information should you save for production?
+
+---
+
+# Bonus Challenge 3: Automated Model Selection
+
+**Task:** Create a function that automatically selects the best model.
+
+```{r bonus3, eval=FALSE}
+# YOUR CODE HERE
+# Write a function that:
+# 1. Trains multiple models
+# 2. Compares their performance
+# 3. Returns the best model
+# 4. Saves everything to a folder
+
+auto_model_selection <- function(X_train, y_train, X_test, y_test) {
+  # Your code here
+}
+
+# Test the function
+```
+
+**Question:** How would you automate model selection in production?
+
+---
+
+# Summary Questions
+
+**Answer these conceptual questions:**
+
+1. **What are the main benefits of using caret?**
+   - Your answer:
+
+2. **How does caret's train() function differ from glmnet()?**
+   - Your answer:
+
+3. **When would you use caret vs manual glmnet?**
+   - Your answer:
+
+4. **What is trainControl and why is it important?**
+   - Your answer:
+
+5. **How do you compare multiple models in caret?**
+   - Your answer:
+
+---
+
+# Self-Check: Did You...
+
+- [ ] Set up trainControl for cross-validation
+- [ ] Create tuning grid for alpha and lambda
+- [ ] Train Elastic Net with caret
+- [ ] Visualize tuning results
+- [ ] Extract variable importance
+- [ ] Compare multiple models systematically
+- [ ] Answer all questions
+
+---
+
+# Submission Instructions
+
+**To submit your work:**
+
+1. Complete all 6 core exercises
+2. Answer all questions
+3. Attempt at least 1 bonus challenge
+4. Run all code chunks to verify they work
+5. Knit this document to HTML
+6. Submit the HTML file to Canvas
+
+**Grading Criteria:**
+- Code runs without errors (40%)
+- Correct implementation (40%)
+- Quality of insights (20%)
+
+**Total Points:** 100 (+ bonus)
+
+---
+
+# Expected Results
+
+**Your caret model should:**
+- Find optimal alpha around 0.4-0.7
+- Find optimal lambda via cross-validation
+- Achieve test RMSE around $30,000-35,000
+- Identify square_feet as most important feature
+- Perform similarly to or better than manual methods
+
+**Common issues:**
+- Training takes longer than manual glmnet (this is normal!)
+- Different random seeds give different results
+- Large tuning grids can be slow (reduce size if needed)
+
+---
+
+# Key Takeaways
+
+**caret advantages:**
+1. ✅ Consistent syntax across 238+ models
+2. ✅ Automated hyperparameter tuning
+3. ✅ Built-in cross-validation
+4. ✅ Easy model comparison
+5. ✅ Variable importance extraction
+6. ✅ Production-ready workflows
+
+**When to use caret:**
+- Building production pipelines
+- Comparing many models
+- Need automation
+- Want standardization
+
+**When to use manual glmnet:**
+- Need fine control
+- Speed is critical
+- Simple one-off analysis
+
+---
+
+**Good luck! 🚀**
+
+**Remember:** caret is used by data science teams worldwide for production ML!

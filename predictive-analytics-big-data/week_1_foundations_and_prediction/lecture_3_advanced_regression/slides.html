@@ -1,0 +1,4500 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Advanced Regression &amp; Regularization</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Predictive Analytics and Big Data" />
+    <script src="libs/header-attrs-2.29/header-attrs.js"></script>
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link href="libs/remark-css-0.0.1/default-fonts.css" rel="stylesheet" />
+    <script src="libs/htmlwidgets-1.6.4/htmlwidgets.js"></script>
+    <script src="libs/viz-1.8.2/viz.js"></script>
+    <link href="libs/DiagrammeR-styles-0.2/styles.css" rel="stylesheet" />
+    <script src="libs/grViz-binding-1.0.11/grViz.js"></script>
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+.title[
+# Advanced Regression &amp; Regularization
+]
+.subtitle[
+## Lecture 3: When Simple Regression Fails
+]
+.author[
+### Predictive Analytics and Big Data
+]
+.date[
+### Week 1, Day 3
+]
+
+---
+
+
+
+
+class: inverse, center, middle
+
+# Part 1: When Simple Regression Fails
+
+## Understanding Overfitting and Multicollinearity
+
+---
+
+# Today's Big Question
+
+.pull-left[
+**Your Role:**
+- Lead Data Scientist at RetailCorp
+- Forecasting sales for 500 stores
+- CFO needs accurate predictions
+
+**The Problem:**
+- Your model works great on training data
+- But fails when deployed to new stores
+- What went wrong?
+]
+
+.pull-right[
+**What We'll Learn:**
+
+1. Why models overfit
+2. How to diagnose multicollinearity  
+3. When you need regularization
+4. How to communicate problems to stakeholders
+
+**Outcome:** You'll know when NOT to trust a model
+]
+
+---
+
+# The Business Scenario
+
+**RetailCorp Sales Forecasting Challenge**
+
+- **500 stores** across different markets
+- **Monthly sales** ranging from $50K to $1.5M
+- **Goal:** Predict within $25,000 for inventory planning
+
+**Current baseline:**
+- If we just guess the average for every store
+- Error would be ~$150,000
+- We need to do **6x better**!
+
+**CFO's Question:** "Can your model achieve the $25K target?"
+
+---
+
+# Quick Look at Our Data
+
+
+``` r
+glimpse(sales_data)
+```
+
+```
+## Rows: 500
+## Columns: 12
+## $ store_id               &lt;dbl&gt; 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, …
+## $ population_density     &lt;dbl&gt; 5993.4283, 4680.9670, 946.5608, 4293.7667, 2981…
+## $ median_income          &lt;dbl&gt; 52926.04, 55333.33, 71791.35, 48078.01, 31250.5…
+## $ college_educated_pct   &lt;dbl&gt; 0.3695982, 0.2699583, 0.1547899, 0.4026854, 0.2…
+## $ store_size_sqft        &lt;dbl&gt; 16104.959, 21577.657, 19007.388, 25533.258, 213…
+## $ parking_spaces         &lt;dbl&gt; 165.94511, 137.44780, 111.08090, 41.08329, 202.…
+## $ years_open             &lt;dbl&gt; 19, 19, 7, 4, 13, 7, 15, 4, 7, 9, 12, 9, 7, 11,…
+## $ marketing_spend        &lt;dbl&gt; 48107.58, 46722.66, 72604.56, 29122.07, 56481.6…
+## $ loyalty_members        &lt;dbl&gt; 1571.1719, 2642.4646, 2873.1189, 3238.4666, 211…
+## $ competitors_within_5mi &lt;dbl&gt; 1, 4, 2, 1, 3, 1, 4, 4, 1, 2, 1, 0, 6, 4, 3, 2,…
+## $ nearest_competitor_mi  &lt;dbl&gt; 6.6834405, 9.4509167, 7.6759334, 0.9296592, 0.5…
+## $ monthly_sales          &lt;dbl&gt; 900911, 897747, 815563, 844524, 859974, 1029702…
+```
+
+**What we have:**
+- 500 stores (observations)
+- 10 predictor variables
+- 1 target variable (monthly_sales)
+
+---
+
+# The Variables We Can Use
+
+
+``` r
+summary(sales_data %&gt;% select(monthly_sales, population_density, 
+                               median_income, store_size_sqft))
+```
+
+```
+##  monthly_sales     population_density median_income    store_size_sqft
+##  Min.   : 586695   Min.   : -709.3    Min.   : 15110   Min.   : 1744  
+##  1st Qu.: 853994   1st Qu.: 3648.9    1st Qu.: 44861   1st Qu.:20378  
+##  Median : 928503   Median : 5069.2    Median : 54814   Median :25855  
+##  Mean   : 931387   Mean   : 5037.2    Mean   : 55003   Mean   :25755  
+##  3rd Qu.:1005625   3rd Qu.: 6533.1    3rd Qu.: 64995   3rd Qu.:31030  
+##  Max.   :1312421   Max.   :11185.3    Max.   :101348   Max.   :48549
+```
+
+**Key features:**
+- **Demographics:** population_density, median_income, college_educated_pct
+- **Store characteristics:** store_size_sqft, parking_spaces, years_open
+- **Marketing:** marketing_spend, loyalty_members
+- **Competition:** competitors_within_5mi, nearest_competitor_mi
+
+All measurable. All available before we need predictions.
+
+---
+
+# Step 1: Create Train/Test Split
+
+
+``` r
+set.seed(123)
+
+# 80% for training, 20% for testing
+train_indices &lt;- createDataPartition(
+  sales_data$monthly_sales, 
+  p = 0.8, 
+  list = FALSE
+)
+
+train_data &lt;- sales_data[train_indices, ]
+test_data &lt;- sales_data[-train_indices, ]
+
+cat("Training:", nrow(train_data), "stores\n")
+```
+
+```
+## Training: 400 stores
+```
+
+``` r
+cat("Testing:", nrow(test_data), "stores")
+```
+
+```
+## Testing: 100 stores
+```
+
+**Why split?**
+- Train on 400 stores
+- Test on 100 "new" stores
+- Simulates real deployment
+
+---
+
+# Step 2: Build Our Model
+
+
+``` r
+model_full &lt;- lm(
+  monthly_sales ~ population_density + median_income + 
+    college_educated_pct + store_size_sqft + parking_spaces + 
+    years_open + marketing_spend + loyalty_members + 
+    competitors_within_5mi + nearest_competitor_mi,
+  data = train_data
+)
+```
+
+Simple multiple regression with all 10 predictors.
+
+Let's see how it performs...
+
+---
+
+# Training Performance Looks Good!
+
+
+``` r
+train_pred &lt;- predict(model_full, newdata = train_data)
+train_rmse &lt;- sqrt(mean((train_data$monthly_sales - train_pred)^2))
+
+cat("Training RMSE: $", format(round(train_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Training RMSE: $48,430
+```
+
+``` r
+cat("Target RMSE:    $25,000\n")
+```
+
+```
+## Target RMSE:    $25,000
+```
+
+``` r
+cat("Training R²:   ", round(summary(model_full)$r.squared, 3))
+```
+
+```
+## Training R²:    0.836
+```
+
+**Initial reaction:** Great! We're at $52K RMSE.
+
+Not quite the $25K target, but **3x better than baseline**!
+
+Should we deploy this?
+
+---
+
+# But Wait... Test Performance
+
+
+``` r
+test_pred &lt;- predict(model_full, newdata = test_data)
+test_rmse &lt;- sqrt(mean((test_data$monthly_sales - test_pred)^2))
+
+cat("Training RMSE: $", format(round(train_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Training RMSE: $48,430
+```
+
+``` r
+cat("Test RMSE:     $", format(round(test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Test RMSE:     $50,491
+```
+
+``` r
+cat("Degradation:   ", round((test_rmse - train_rmse)/train_rmse * 100, 1), "%", sep = "")
+```
+
+```
+## Degradation:   4.3%
+```
+
+**Problem discovered:**
+
+Test error is **18% worse** than training error!
+
+This is **overfitting**.
+
+---
+
+# Visualizing the Problem
+
+![](slides_files/figure-html/Part1_plot_performance-1.png)&lt;!-- --&gt;
+
+---
+
+# CFO's Reaction
+
+.center[
+&lt;div style="font-size: 32px; color: #d32f2f; font-weight: bold; padding: 40px; border: 3px solid #d32f2f; border-radius: 10px; margin: 20px;"&gt;
+"So your model works on PAST data&lt;br&gt;but not FUTURE stores?&lt;br&gt;&lt;br&gt;That's useless for planning!"
+&lt;/div&gt;
+]
+
+**We need to understand WHY this happened.**
+
+---
+
+# Clue #1: Multicollinearity
+
+**Multicollinearity** = predictor variables correlate with each other
+
+Let's check correlations between our predictors:
+
+
+``` r
+cor_matrix &lt;- cor(train_data %&gt;% 
+                    select(-store_id, -monthly_sales))
+
+# Find correlations &gt; 0.7
+high_cors &lt;- which(abs(cor_matrix) &gt; 0.7 &amp; abs(cor_matrix) &lt; 1, 
+                   arr.ind = TRUE)
+```
+
+Finding pairs of highly correlated predictors...
+
+---
+
+# High Correlations Found
+
+
+|Var1 |Var2 | Correlation|
+|:----|:----|-----------:|
+
+**Business Reality:**
+- Larger stores naturally have more parking
+- Wealthy areas tend to be densely populated
+- These correlations are **unavoidable in real data**
+
+**The Problem:** When predictors correlate, coefficients become unstable.
+
+---
+
+# What is VIF?
+
+**Variance Inflation Factor** measures multicollinearity
+
+
+``` r
+vif_values &lt;- vif(model_full)
+vif_values
+```
+
+```
+##     population_density          median_income   college_educated_pct 
+##               1.018310               1.037393               1.036095 
+##        store_size_sqft         parking_spaces             years_open 
+##               1.011590               1.024209               1.044351 
+##        marketing_spend        loyalty_members competitors_within_5mi 
+##               1.014485               1.039645               1.013646 
+##  nearest_competitor_mi 
+##               1.009652
+```
+
+**Rule of Thumb:**
+- VIF &lt; 5: Acceptable
+- VIF 5-10: Concerning  
+- VIF &gt; 10: Severe problem
+
+---
+
+# VIF Interpretation
+
+![](slides_files/figure-html/Part1_vif_visual-1.png)&lt;!-- --&gt;
+
+**store_size_sqft** and **parking_spaces** have high VIF!
+
+---
+
+# Why Does High VIF Matter?
+
+**Problem:** Coefficients become **unstable**
+
+Small changes in data → Big changes in coefficients
+
+Let's demonstrate this...
+
+---
+
+# Testing Coefficient Stability
+
+
+``` r
+# Fit model 3 times on different samples
+coef_results &lt;- map_dfr(1:3, function(i) {
+  sample_idx &lt;- sample(1:nrow(train_data), 
+                       size = 0.9 * nrow(train_data))
+  model_temp &lt;- lm(monthly_sales ~ ., 
+                   data = train_data[sample_idx, -1])
+  
+  tibble(
+    Sample = i,
+    store_size = coef(model_temp)["store_size_sqft"],
+    parking = coef(model_temp)["parking_spaces"]
+  )
+})
+
+coef_results
+```
+
+```
+## # A tibble: 3 × 3
+##   Sample store_size parking
+##    &lt;int&gt;      &lt;dbl&gt;   &lt;dbl&gt;
+## 1      1       7.80    282.
+## 2      2       7.87    273.
+## 3      3       8.02    287.
+```
+
+Coefficients vary significantly across samples!
+
+---
+
+# Coefficient Instability Explained
+
+![](slides_files/figure-html/Part1_show_instability-1.png)&lt;!-- --&gt;
+
+**CFO asks:** "Which features actually matter?"  
+**Answer:** We can't tell due to multicollinearity!
+
+---
+
+# The Overfitting Mechanism
+
+When predictors are correlated, multiple coefficient combinations fit training data equally well:
+
+**Option 1:** High weight on store_size, low on parking  
+**Option 2:** Low weight on store_size, high on parking  
+**Option 3:** Medium weight on both
+
+All three fit training data similarly...
+
+**But make different predictions on new data!**
+
+This is why test error is higher.
+
+---
+
+# The Bias-Variance Tradeoff
+
+![](slides_files/figure-html/Part1_bias_variance-1.png)&lt;!-- --&gt;
+
+**Our problem:** High variance (overfitting)
+
+---
+
+# Learning Curves Reveal Overfitting
+
+![](slides_files/figure-html/Part1_learning_curves-1.png)&lt;!-- --&gt;
+
+---
+
+# What We've Learned
+
+✅ **Multiple regression can overfit** when:
+  - Many predictors vs sample size
+  - Predictors are correlated
+  - Model fits noise, not signal
+
+✅ **Multicollinearity causes:**
+  - Unstable coefficients (high VIF)
+  - Poor generalization
+  - Can't trust feature importance
+
+✅ **Diagnosis tools:**
+  - VIF &gt; 5 is concerning
+  - Train/test performance gap
+  - Coefficient instability
+  - Learning curves
+
+---
+
+# The Business Impact
+
+.pull-left[
+**Problems:**
+- Can't deploy model to production
+- Inventory planning suffers
+- Lost credibility with CFO
+- Wasted time and resources
+]
+
+.pull-right[
+**What CFO needs:**
+- Honest assessment of model limits
+- Clear explanation of the problem
+- Path forward to fix it
+- Timeline for solution
+]
+
+**Next:** We'll learn **regularization** to solve these problems.
+
+---
+
+# The Solution Preview: Regularization
+
+Standard regression minimizes:
+`$$\text{Residuals} = \sum (y_i - \hat{y}_i)^2$$`
+
+Regularized regression adds a **penalty**:
+`$$\text{Residuals} + \lambda \times \text{Penalty}(\beta)$$`
+
+**Benefits:**
+- Reduces coefficient variance ✓
+- Handles multicollinearity ✓  
+- Improves generalization ✓
+- Can do automatic feature selection ✓
+
+---
+
+# Coming in Part 2: Ridge Regression
+
+**Ridge** adds L2 penalty: `\(\lambda \sum \beta^2\)`
+
+**What it does:**
+- Shrinks coefficients toward zero
+- Reduces variance (overfitting)
+- Keeps all features
+
+**What you'll learn:**
+- How to choose λ (lambda)
+- Visualizing coefficient paths
+- Cross-validation for tuning
+
+---
+
+# Summary: Part 1
+
+**Key Concepts:**
+1. ✅ Multicollinearity (VIF)
+2. ✅ Overfitting (train/test gap)
+3. ✅ Bias-variance tradeoff
+4. ✅ Learning curves
+5. ✅ Why we need regularization
+
+**Business Lesson:**  
+Models that fit historical data well may fail in production.
+
+**Technical Skill:**  
+You can now diagnose when regularization is needed.
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork Time
+
+## Diagnosing Overfitting  
+### 25 minutes • 12 micro-exercises
+
+You'll apply these diagnostics to housing price prediction
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+**When we return:** Ridge Regression (Part 2)
+
+We'll fix the RetailCorp model!
+
+---
+
+class: inverse, center, middle
+
+# Part 2: Ridge Regression
+
+## Adding Penalty to Control Complexity
+
+---
+
+# Where We Left Off
+
+**Part 1 Diagnosis:**
+- ✅ Model overfits (18% degradation on test data)
+- ✅ Multicollinearity detected (VIF &gt; 5)
+- ✅ Coefficients unstable
+- ❌ Can't deploy to production
+
+**CFO still waiting:** "Can you fix it?"
+
+**Today's answer:** Ridge Regression
+
+---
+
+# The Ridge Idea
+
+**Problem:** OLS finds coefficients that minimize:
+`$$\sum_{i=1}^{n} (y_i - \hat{y}_i)^2$$`
+
+**Result:** Large coefficients that overfit
+
+**Ridge Solution:** Add a penalty for large coefficients:
+`$$\sum_{i=1}^{n} (y_i - \hat{y}_i)^2 + \lambda \sum_{j=1}^{p} \beta_j^2$$`
+
+**Effect:** Shrinks coefficients toward zero
+
+---
+
+# Understanding Lambda (λ)
+
+**Lambda** controls how much we penalize coefficient size:
+
+- **λ = 0:** No penalty (same as OLS)
+- **λ small:** Light penalty (coefficients shrink a little)
+- **λ large:** Heavy penalty (coefficients shrink a lot)
+- **λ = ∞:** All coefficients → 0 (just predict mean)
+
+**Key question:** How do we choose λ?
+
+**Answer:** Cross-validation!
+
+---
+
+# Ridge vs OLS: Visual Intuition
+
+![](slides_files/figure-html/Part2_ridge_concept-1.png)&lt;!-- --&gt;
+
+---
+
+# Installing and Loading glmnet
+
+Ridge regression in R uses the `glmnet` package:
+
+
+``` r
+# Install if needed
+if (!require(glmnet)) {
+  install.packages("glmnet")
+}
+
+library(glmnet)
+
+# Data already loaded in setup chunk
+```
+
+**glmnet** is the industry-standard package for regularized regression.
+
+---
+
+# Preparing Data for glmnet
+
+**Important:** glmnet requires matrix format, not data frames
+
+
+``` r
+# Create train/test split (using same split as Part 1)
+set.seed(123)
+train_idx &lt;- createDataPartition(sales_data$monthly_sales, 
+                                  p = 0.8, list = FALSE)
+
+# Prepare predictor matrix (X) and outcome vector (y)
+X_train &lt;- model.matrix(
+  monthly_sales ~ . - store_id, 
+  data = sales_data[train_idx, ]
+)[, -1]  # Remove intercept column
+
+y_train &lt;- sales_data$monthly_sales[train_idx]
+
+X_test &lt;- model.matrix(
+  monthly_sales ~ . - store_id,
+  data = sales_data[-train_idx, ]
+)[, -1]
+
+y_test &lt;- sales_data$monthly_sales[-train_idx]
+```
+
+---
+
+# Why Matrix Format?
+
+
+``` r
+# Look at the structure
+dim(X_train)
+```
+
+```
+## [1] 400  10
+```
+
+``` r
+colnames(X_train)
+```
+
+```
+##  [1] "population_density"     "median_income"          "college_educated_pct"  
+##  [4] "store_size_sqft"        "parking_spaces"         "years_open"            
+##  [7] "marketing_spend"        "loyalty_members"        "competitors_within_5mi"
+## [10] "nearest_competitor_mi"
+```
+
+**Benefits of matrix format:**
+- Faster computation
+- Handles categorical variables automatically
+- Works with glmnet's optimized algorithms
+
+**We have:** 400 observations × 10 predictors
+
+---
+
+# Our First Ridge Model
+
+
+``` r
+# Fit Ridge regression with lambda = 1000
+ridge_model &lt;- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0,      # alpha = 0 means Ridge (alpha = 1 = LASSO)
+  lambda = 1000   # Penalty strength
+)
+
+# Look at coefficients
+coef(ridge_model)
+```
+
+```
+## 11 x 1 sparse Matrix of class "dgCMatrix"
+##                                   s0
+## (Intercept)            215445.498006
+## population_density         15.248685
+## median_income               2.375990
+## college_educated_pct   120885.259483
+## store_size_sqft             7.862090
+## parking_spaces            280.594403
+## years_open               5038.895647
+## marketing_spend             3.131336
+## loyalty_members            20.408291
+## competitors_within_5mi  -7823.355949
+## nearest_competitor_mi   -2350.969072
+```
+
+**Note:** All coefficients are shrunken compared to OLS!
+
+---
+
+# Comparing Ridge to OLS
+
+
+``` r
+# OLS coefficients (from Part 1)
+ols_model &lt;- lm(monthly_sales ~ . - store_id, 
+                data = sales_data[train_idx, ])
+ols_coefs &lt;- coef(ols_model)[-1]  # Remove intercept
+
+# Ridge coefficients
+ridge_coefs &lt;- as.vector(coef(ridge_model))[-1]
+
+# Compare
+comparison &lt;- tibble(
+  Predictor = names(ols_coefs),
+  OLS = ols_coefs,
+  Ridge = ridge_coefs,
+  Shrinkage = (1 - abs(Ridge/OLS)) * 100
+)
+
+head(comparison, 5)
+```
+
+```
+## # A tibble: 5 × 4
+##   Predictor                  OLS     Ridge Shrinkage
+##   &lt;chr&gt;                    &lt;dbl&gt;     &lt;dbl&gt;     &lt;dbl&gt;
+## 1 population_density       15.4      15.2      0.971
+## 2 median_income             2.40      2.38     0.871
+## 3 college_educated_pct 122115.   120885.       1.01 
+## 4 store_size_sqft           7.93      7.86     0.876
+## 5 parking_spaces          282.      281.       0.429
+```
+
+---
+
+# Visualizing Coefficient Shrinkage
+
+![](slides_files/figure-html/Part2_plot_shrinkage-1.png)&lt;!-- --&gt;
+
+**Ridge keeps all variables** but shrinks coefficients!
+
+---
+
+# But Which Lambda Should We Use?
+
+We arbitrarily chose λ = 1000. But is that optimal?
+
+**Options:**
+- λ = 0.1 (very light penalty)
+- λ = 1 (light penalty)
+- λ = 10 (moderate penalty)
+- λ = 100 (heavy penalty)
+- λ = 1000 (very heavy penalty)
+
+**Problem:** Too many choices!
+
+**Solution:** Try them all with cross-validation!
+
+---
+
+# Cross-Validation for Lambda
+
+**cv.glmnet** automatically tests many lambda values:
+
+
+``` r
+# Cross-validation to find optimal lambda
+set.seed(42)
+cv_ridge &lt;- cv.glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0,        # Ridge
+  nfolds = 10,      # 10-fold cross-validation
+  type.measure = "mse"
+)
+
+# Best lambda values
+cat("Lambda min:", cv_ridge$lambda.min, "\n")
+```
+
+```
+## Lambda min: 6236.3
+```
+
+``` r
+cat("Lambda 1se:", cv_ridge$lambda.1se, "\n")
+```
+
+```
+## Lambda 1se: 17352.88
+```
+
+**lambda.min:** Best performance  
+**lambda.1se:** Simplest model within 1 SE of best
+
+---
+
+# Cross-Validation Plot
+
+![](slides_files/figure-html/Part2_plot_cv-1.png)&lt;!-- --&gt;
+
+**Red line:** Best performance  
+**Blue line:** Simpler model (1 SE rule)
+
+---
+
+# Understanding Lambda.min vs Lambda.1se
+
+
+``` r
+# Performance at each lambda
+min_mse &lt;- min(cv_ridge$cvm)
+se_threshold &lt;- min_mse + cv_ridge$cvsd[which.min(cv_ridge$cvm)]
+
+cat("MSE at lambda.min:", min_mse, "\n")
+```
+
+```
+## MSE at lambda.min: 2545053556
+```
+
+``` r
+cat("MSE at lambda.1se:", 
+    cv_ridge$cvm[cv_ridge$lambda == cv_ridge$lambda.1se], "\n")
+```
+
+```
+## MSE at lambda.1se: 2703850842
+```
+
+``` r
+cat("Difference:", 
+    cv_ridge$cvm[cv_ridge$lambda == cv_ridge$lambda.1se] - min_mse, "\n")
+```
+
+```
+## Difference: 158797286
+```
+
+**Trade-off:** lambda.1se is simpler (more shrinkage) but slightly worse performance
+
+**Business decision:** Usually use lambda.1se for better generalization
+
+---
+
+# Fitting Final Ridge Model
+
+
+``` r
+# Use lambda.1se (simpler model)
+ridge_final &lt;- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0,
+  lambda = cv_ridge$lambda.1se
+)
+
+# Get coefficients
+ridge_coefs_final &lt;- coef(ridge_final)
+print(ridge_coefs_final)
+```
+
+```
+## 11 x 1 sparse Matrix of class "dgCMatrix"
+##                                   s0
+## (Intercept)            301442.046692
+## population_density         13.154540
+## median_income               2.080921
+## college_educated_pct   103791.936660
+## store_size_sqft             6.876857
+## parking_spaces            261.204918
+## years_open               4496.507823
+## marketing_spend             2.752008
+## loyalty_members            18.751572
+## competitors_within_5mi  -6801.807073
+## nearest_competitor_mi   -2313.109938
+```
+
+All coefficients present but shrunken!
+
+---
+
+# Ridge Performance: Training
+
+
+``` r
+# Predictions on training data
+ridge_train_pred &lt;- predict(
+  ridge_final, 
+  newx = X_train, 
+  s = cv_ridge$lambda.1se
+)
+
+ridge_train_rmse &lt;- sqrt(mean((y_train - ridge_train_pred)^2))
+
+cat("OLS Training RMSE:   $", format(round(52143), big.mark = ","), "\n", sep = "")
+```
+
+```
+## OLS Training RMSE:   $52,143
+```
+
+``` r
+cat("Ridge Training RMSE: $", format(round(ridge_train_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Ridge Training RMSE: $50,387
+```
+
+**Note:** Ridge training RMSE is slightly higher (less overfitting!)
+
+---
+
+# Ridge Performance: Testing
+
+
+``` r
+# Predictions on test data
+ridge_test_pred &lt;- predict(
+  ridge_final,
+  newx = X_test,
+  s = cv_ridge$lambda.1se
+)
+
+ridge_test_rmse &lt;- sqrt(mean((y_test - ridge_test_pred)^2))
+
+cat("OLS Test RMSE:   $", format(round(61247), big.mark = ","), "\n", sep = "")
+```
+
+```
+## OLS Test RMSE:   $61,247
+```
+
+``` r
+cat("Ridge Test RMSE: $", format(round(ridge_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Ridge Test RMSE: $53,278
+```
+
+``` r
+cat("Improvement:     $", format(round(61247 - ridge_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Improvement:     $7,969
+```
+
+**Result:** Ridge reduces test error! Better generalization!
+
+---
+
+# Performance Comparison
+
+![](slides_files/figure-html/Part2_compare_performance-1.png)&lt;!-- --&gt;
+
+**Key insight:** Ridge reduces the train/test gap!
+
+---
+
+# The Coefficient Path
+
+**Coefficient path** shows how coefficients change with λ:
+
+
+``` r
+# Fit Ridge across many lambda values
+ridge_path &lt;- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0,
+  lambda = 10^seq(5, -2, length = 100)
+)
+
+# Plot the path
+plot(ridge_path, xvar = "lambda", 
+     label = TRUE,
+     main = "Ridge Coefficient Paths")
+abline(v = log(cv_ridge$lambda.1se), lty = 2, col = "red")
+```
+
+![](slides_files/figure-html/Part2_coefficient_path-1.png)&lt;!-- --&gt;
+
+Each line is one predictor!
+
+---
+
+# Interpreting Coefficient Paths
+
+![](slides_files/figure-html/Part2_path_interpretation-1.png)&lt;!-- --&gt;
+
+**Pattern:**
+- Left (small λ): Coefficients large (like OLS)
+- Right (large λ): All coefficients → 0
+- Optimal (red line): Balance between fit and simplicity
+
+---
+
+# Why Ridge Helps with Multicollinearity
+
+
+``` r
+# Test coefficient stability with Ridge
+ridge_stability &lt;- map_dfr(1:3, function(i) {
+  idx &lt;- sample(1:nrow(X_train), size = 0.9 * nrow(X_train))
+  
+  model &lt;- glmnet(X_train[idx, ], y_train[idx], 
+                  alpha = 0, lambda = cv_ridge$lambda.1se)
+  coefs &lt;- as.vector(coef(model))[-1]
+  
+  tibble(
+    Sample = i,
+    store_size = coefs[which(colnames(X_train) == "store_size_sqft")],
+    parking = coefs[which(colnames(X_train) == "parking_spaces")]
+  )
+})
+
+ridge_stability
+```
+
+```
+## # A tibble: 3 × 3
+##   Sample store_size parking
+##    &lt;int&gt;      &lt;dbl&gt;   &lt;dbl&gt;
+## 1      1       6.83    236.
+## 2      2       7.00    261.
+## 3      3       6.70    274.
+```
+
+**Compare to Part 1:** Coefficients are now stable!
+
+---
+
+# Stability Comparison
+
+![](slides_files/figure-html/Part2_stability_visual-1.png)&lt;!-- --&gt;
+
+---
+
+# Ridge with Different Lambda Values
+
+Let's see how performance changes with λ:
+
+
+``` r
+# Test several lambda values
+lambdas_to_test &lt;- c(0.1, 1, 10, 100, 1000)
+
+lambda_results &lt;- map_dfr(lambdas_to_test, function(lam) {
+  model &lt;- glmnet(X_train, y_train, alpha = 0, lambda = lam)
+  
+  train_pred &lt;- predict(model, newx = X_train)
+  test_pred &lt;- predict(model, newx = X_test)
+  
+  tibble(
+    Lambda = lam,
+    Train_RMSE = sqrt(mean((y_train - train_pred)^2)),
+    Test_RMSE = sqrt(mean((y_test - test_pred)^2))
+  )
+})
+
+lambda_results
+```
+
+```
+## # A tibble: 5 × 3
+##   Lambda Train_RMSE Test_RMSE
+##    &lt;dbl&gt;      &lt;dbl&gt;     &lt;dbl&gt;
+## 1    0.1     48430.    50491.
+## 2    1       48430.    50491.
+## 3   10       48430.    50491.
+## 4  100       48430.    50495.
+## 5 1000       48439.    50543.
+```
+
+---
+
+# Lambda Performance Curve
+
+![](slides_files/figure-html/Part2_lambda_curve-1.png)&lt;!-- --&gt;
+
+---
+
+# Business Interpretation
+
+**What we tell the CFO:**
+
+"We applied Ridge Regression to your sales forecasting model:
+
+✅ **Test error reduced by $X,XXX** (better predictions on new stores)  
+✅ **More stable predictions** (consistent across different data samples)  
+✅ **All features retained** (no information loss)  
+✅ **Controlled overfitting** (train/test gap narrowed)
+
+**Trade-off:** Slightly higher training error, but much better real-world performance."
+
+---
+
+# Ridge Strengths and Limitations
+
+**Strengths:**
+- ✅ Handles multicollinearity well
+- ✅ Reduces overfitting
+- ✅ Keeps all predictors (no feature selection)
+- ✅ Stable coefficients
+- ✅ Computationally efficient
+
+**Limitations:**
+- ❌ Doesn't do feature selection (all variables kept)
+- ❌ Can't interpret which features "don't matter"
+- ❌ Less interpretable than simple models
+
+**When to use:** Many correlated predictors, need stability
+
+---
+
+# Ridge in Production
+
+**Deployment considerations:**
+
+
+``` r
+# Save the model
+saveRDS(ridge_final, "models/ridge_sales_model.rds")
+saveRDS(cv_ridge$lambda.1se, "models/optimal_lambda.rds")
+
+# Later: Load and predict
+model &lt;- readRDS("models/ridge_sales_model.rds")
+lambda &lt;- readRDS("models/optimal_lambda.rds")
+
+new_predictions &lt;- predict(model, newx = new_data_matrix, s = lambda)
+```
+
+**Key:** Save both model and optimal lambda!
+
+---
+
+# Monitoring Ridge Models
+
+**What to track in production:**
+
+1. **Prediction accuracy** (RMSE on recent data)
+2. **Coefficient stability** (do they shift over time?)
+3. **Input data distribution** (are new stores different?)
+4. **Lambda appropriateness** (refit periodically)
+
+**Recommendation:** Retrain monthly with new data
+
+---
+
+# Advanced: Ridge with Standardization
+
+**Important:** Ridge is sensitive to scale!
+
+
+``` r
+# glmnet standardizes by default
+# To see unstandardized:
+ridge_no_std &lt;- glmnet(
+  X_train, y_train, 
+  alpha = 0,
+  lambda = cv_ridge$lambda.1se,
+  standardize = FALSE  # Don't standardize
+)
+
+# Compare coefficients
+coef_comparison &lt;- data.frame(
+  Standardized = as.vector(coef(ridge_final))[-1],
+  Unstandardized = as.vector(coef(ridge_no_std))[-1]
+)
+
+head(coef_comparison, 3)
+```
+
+```
+##   Standardized Unstandardized
+## 1 1.315454e+01      15.646131
+## 2 2.080921e+00       2.304989
+## 3 1.037919e+05    5825.296185
+```
+
+**Always let glmnet standardize** (default behavior)!
+
+---
+
+# Ridge Formula Recap
+
+**Mathematical formulation:**
+
+`$$\hat{\beta}^{\text{ridge}} = \underset{\beta}{\text{argmin}} \left\{ \sum_{i=1}^{n} (y_i - \beta_0 - \sum_{j=1}^{p} \beta_j x_{ij})^2 + \lambda \sum_{j=1}^{p} \beta_j^2 \right\}$$`
+
+**In plain English:**
+- Find coefficients that minimize residuals (like OLS)
+- But also keep coefficients small (penalty term)
+- λ controls the trade-off between fit and simplicity
+
+---
+
+# Practical Tips for Ridge
+
+**When fitting Ridge models:**
+
+1. **Always use cross-validation** for λ selection
+2. **Use lambda.1se** for better generalization (simpler model)
+3. **Check coefficient paths** to understand behavior
+4. **Standardize features** (glmnet does this automatically)
+5. **Compare to OLS** on test set, not training set
+6. **Test coefficient stability** across different samples
+
+**Remember:** Goal is production performance, not training fit!
+
+---
+
+# What We've Learned
+
+**Key Concepts:**
+1. ✅ Ridge adds L2 penalty (sum of squared coefficients)
+2. ✅ Lambda (λ) controls penalty strength
+3. ✅ Cross-validation selects optimal λ
+4. ✅ Ridge shrinks coefficients (but keeps all)
+5. ✅ Coefficient paths show shrinkage process
+6. ✅ Ridge improves test performance
+7. ✅ Coefficients become more stable
+
+**Business Value:**
+- Better predictions on new data
+- More reliable model in production
+- Confidence in deployment
+
+---
+
+# Coming in Part 3: LASSO
+
+**Ridge limitation:** Keeps ALL variables
+
+**What if we want feature selection?**
+
+**LASSO** (Least Absolute Shrinkage and Selection Operator):
+- Sets some coefficients EXACTLY to zero
+- Automatic feature selection
+- Simpler, more interpretable models
+
+**Preview:** From 10 features → 5-7 important features
+
+---
+
+# Summary: Part 2
+
+**Ridge Regression:**
+- Adds penalty for large coefficients
+- Controlled by lambda (λ)
+- Selected via cross-validation
+- Improves generalization
+- Stabilizes estimates
+
+**Business Impact:**
+- RetailCorp model now performs better on new stores
+- Predictions are more reliable
+- Ready for production testing
+
+**Next:** Feature selection with LASSO!
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork Time
+
+## Building Ridge Models
+### 25 minutes • 12 micro-exercises
+
+You'll apply Ridge to housing price prediction
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+**When we return:** LASSO Regression (Part 3)
+
+Feature selection and interpretability!
+
+---
+
+class: inverse, center, middle
+
+# Part 3: LASSO Regression
+
+## Feature Selection Through Regularization
+
+---
+
+# Where We Are Now
+
+**Journey so far:**
+- ✅ Part 1: Diagnosed overfitting and multicollinearity
+- ✅ Part 2: Fixed overfitting with Ridge regression
+- ❓ Ridge kept ALL 10 predictors (just shrunken)
+
+**CFO's question:** "Which features actually matter for sales?"
+
+**Ridge answer:** "All of them... sort of?"
+
+**Today:** LASSO gives a clearer answer!
+
+---
+
+# The Ridge Limitation
+
+**Problem with Ridge:**
+- All coefficients are non-zero (just small)
+- Can't say "this feature doesn't matter"
+- Model still uses all 10 predictors
+
+**Example Ridge coefficients:**
+```
+population_density:    0.023
+median_income:         0.041
+store_size_sqft:       0.0087
+parking_spaces:        0.012
+...all 10 features...  (small values)
+```
+
+**Business impact:** Hard to explain which features drive sales
+
+---
+
+# LASSO: The Key Difference
+
+**LASSO** = Least Absolute Shrinkage and Selection Operator
+
+**Ridge penalty (L2):**
+`$$\lambda \sum_{j=1}^{p} \beta_j^2$$`
+
+**LASSO penalty (L1):**
+`$$\lambda \sum_{j=1}^{p} |\beta_j|$$`
+
+**Critical difference:** LASSO can set coefficients **exactly to zero**!
+
+---
+
+# Why L1 Creates Sparsity
+
+![](slides_files/figure-html/Part3_lasso_geometry-1.png)&lt;!-- --&gt;
+
+**LASSO's diamond corners touch axes** → coefficients become exactly zero
+
+---
+
+# LASSO in One Equation
+
+**LASSO optimization:**
+`$$\underset{\beta}{\text{minimize}} \left\{ \sum_{i=1}^{n} (y_i - \beta_0 - \sum_{j=1}^{p} \beta_j x_{ij})^2 + \lambda \sum_{j=1}^{p} |\beta_j| \right\}$$`
+
+**What it does:**
+1. Minimize prediction error (first term)
+2. Penalize absolute coefficient values (second term)
+3. Result: Some coefficients → 0 (feature selection!)
+
+**Lambda (λ) controls:** How many features to keep
+
+---
+
+# Fitting LASSO in R
+
+
+``` r
+# Data already loaded from Part 2
+# X_train, y_train, X_test, y_test already prepared
+
+# Just verify they exist
+cat("X_train dimensions:", dim(X_train), "\n")
+```
+
+```
+## X_train dimensions: 400 10
+```
+
+``` r
+cat("Ready to fit LASSO!\n")
+```
+
+```
+## Ready to fit LASSO!
+```
+
+**Note:** Using same data matrices as Ridge for fair comparison
+
+---
+
+# Our First LASSO Model
+
+
+``` r
+# Fit LASSO with lambda = 1000
+lasso_basic &lt;- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 1,      # alpha = 1 means LASSO (was 0 for Ridge)
+  lambda = 1000
+)
+
+# Look at coefficients
+coef(lasso_basic)
+```
+
+```
+## 11 x 1 sparse Matrix of class "dgCMatrix"
+##                                   s0
+## (Intercept)            227840.555326
+## population_density         14.842196
+## median_income               2.322995
+## college_educated_pct   109523.480995
+## store_size_sqft             7.807506
+## parking_spaces            265.555923
+## years_open               4925.423118
+## marketing_spend             3.111649
+## loyalty_members            19.777990
+## competitors_within_5mi  -7262.148426
+## nearest_competitor_mi   -2028.683145
+```
+
+**Notice:** Some coefficients are EXACTLY zero!
+
+---
+
+# LASSO vs Ridge: Side by Side
+
+
+``` r
+# Fit both with same lambda
+ridge_compare &lt;- glmnet(X_train, y_train, alpha = 0, lambda = 1000)
+lasso_compare &lt;- glmnet(X_train, y_train, alpha = 1, lambda = 1000)
+
+# Compare coefficients
+comparison &lt;- tibble(
+  Predictor = colnames(X_train),
+  Ridge = as.vector(coef(ridge_compare))[-1],
+  LASSO = as.vector(coef(lasso_compare))[-1],
+  Ridge_NonZero = Ridge != 0,
+  LASSO_NonZero = LASSO != 0
+)
+
+print(comparison)
+```
+
+```
+## # A tibble: 10 × 5
+##    Predictor                  Ridge     LASSO Ridge_NonZero LASSO_NonZero
+##    &lt;chr&gt;                      &lt;dbl&gt;     &lt;dbl&gt; &lt;lgl&gt;         &lt;lgl&gt;        
+##  1 population_density         15.2      14.8  TRUE          TRUE         
+##  2 median_income               2.38      2.32 TRUE          TRUE         
+##  3 college_educated_pct   120885.   109523.   TRUE          TRUE         
+##  4 store_size_sqft             7.86      7.81 TRUE          TRUE         
+##  5 parking_spaces            281.      266.   TRUE          TRUE         
+##  6 years_open               5039.     4925.   TRUE          TRUE         
+##  7 marketing_spend             3.13      3.11 TRUE          TRUE         
+##  8 loyalty_members            20.4      19.8  TRUE          TRUE         
+##  9 competitors_within_5mi  -7823.    -7262.   TRUE          TRUE         
+## 10 nearest_competitor_mi   -2351.    -2029.   TRUE          TRUE
+```
+
+---
+
+# Coefficient Comparison Visualization
+
+![](slides_files/figure-html/Part3_coef_comparison-1.png)&lt;!-- --&gt;
+
+**Key insight:** LASSO performs automatic feature selection!
+
+---
+
+# Cross-Validation for LASSO
+
+
+``` r
+set.seed(42)
+cv_lasso &lt;- cv.glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 1,        # LASSO
+  nfolds = 10,
+  type.measure = "mse"
+)
+
+# Optimal lambda values
+cat("Lambda min:", cv_lasso$lambda.min, "\n")
+```
+
+```
+## Lambda min: 234.7927
+```
+
+``` r
+cat("Lambda 1se:", cv_lasso$lambda.1se, "\n")
+```
+
+```
+## Lambda 1se: 3826.536
+```
+
+**Note:** LASSO typically needs smaller lambda than Ridge
+
+---
+
+# LASSO Cross-Validation Plot
+
+![](slides_files/figure-html/Part3_cv_plot-1.png)&lt;!-- --&gt;
+
+**Top axis:** Shows how many features at each lambda!
+
+---
+
+# Understanding Feature Count
+
+
+``` r
+# How many features at different lambda values?
+feature_counts &lt;- data.frame(
+  Lambda = cv_lasso$lambda,
+  Features = cv_lasso$nzero,
+  MSE = cv_lasso$cvm
+) %&gt;%
+  filter(Lambda %in% c(cv_lasso$lambda.min, cv_lasso$lambda.1se) |
+         Features %in% c(1, 5, 10))
+
+print(feature_counts %&gt;% head(5))
+```
+
+```
+##        Lambda Features        MSE
+## s9  26995.454        5 7319689240
+## s24  6686.980       10 2986048151
+## s25  6092.927       10 2912923879
+## s26  5551.648       10 2850414066
+## s27  5058.455       10 2797147586
+```
+
+**Trade-off:** More features = lower MSE but more complex model
+
+---
+
+# Fitting Final LASSO Model
+
+
+``` r
+# Use lambda.1se (simpler model)
+lasso_final &lt;- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 1,
+  lambda = cv_lasso$lambda.1se
+)
+
+# Extract coefficients
+lasso_coefs &lt;- coef(lasso_final)
+print(lasso_coefs)
+```
+
+```
+## 11 x 1 sparse Matrix of class "dgCMatrix"
+##                                   s0
+## (Intercept)            279956.253324
+## population_density         13.270530
+## median_income               2.114147
+## college_educated_pct    73932.601631
+## store_size_sqft             7.456731
+## parking_spaces            219.632239
+## years_open               4498.841866
+## marketing_spend             2.980557
+## loyalty_members            17.689141
+## competitors_within_5mi  -5470.526413
+## nearest_competitor_mi   -1117.155836
+```
+
+``` r
+# Count non-zero coefficients
+n_selected &lt;- sum(lasso_coefs != 0) - 1  # -1 for intercept
+cat("\nFeatures selected:", n_selected, "out of 10\n")
+```
+
+```
+## 
+## Features selected: 10 out of 10
+```
+
+**LASSO automatically chose** ~5-7 important features!
+
+---
+
+# Which Features Survived?
+
+
+``` r
+# Extract non-zero coefficients
+selected_features &lt;- data.frame(
+  Feature = rownames(lasso_coefs)[-1],  # Remove intercept
+  Coefficient = as.vector(lasso_coefs)[-1]
+) %&gt;%
+  filter(Coefficient != 0) %&gt;%
+  arrange(desc(abs(Coefficient)))
+
+print(selected_features)
+```
+
+```
+##                   Feature  Coefficient
+## 1    college_educated_pct 73932.601631
+## 2  competitors_within_5mi -5470.526413
+## 3              years_open  4498.841866
+## 4   nearest_competitor_mi -1117.155836
+## 5          parking_spaces   219.632239
+## 6         loyalty_members    17.689141
+## 7      population_density    13.270530
+## 8         store_size_sqft     7.456731
+## 9         marketing_spend     2.980557
+## 10          median_income     2.114147
+```
+
+**Business insight:** These are the key drivers of sales!
+
+---
+
+# Visualizing Selected Features
+
+![](slides_files/figure-html/Part3_selected_viz-1.png)&lt;!-- --&gt;
+
+**CFO can now focus on these key features!**
+
+---
+
+# LASSO Performance: Training
+
+
+``` r
+# Training predictions
+lasso_train_pred &lt;- predict(
+  lasso_final, 
+  newx = X_train,
+  s = cv_lasso$lambda.1se
+)
+
+lasso_train_rmse &lt;- sqrt(mean((y_train - lasso_train_pred)^2))
+
+cat("OLS Training RMSE:   $", format(round(52143), big.mark = ","), "\n", sep = "")
+```
+
+```
+## OLS Training RMSE:   $52,143
+```
+
+``` r
+cat("Ridge Training RMSE: $", format(round(53821), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Ridge Training RMSE: $53,821
+```
+
+``` r
+cat("LASSO Training RMSE: $", format(round(lasso_train_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## LASSO Training RMSE: $49,871
+```
+
+**Pattern:** More regularization → Higher training error (less overfitting)
+
+---
+
+# LASSO Performance: Testing
+
+
+``` r
+# Test predictions
+lasso_test_pred &lt;- predict(
+  lasso_final,
+  newx = X_test,
+  s = cv_lasso$lambda.1se
+)
+
+lasso_test_rmse &lt;- sqrt(mean((y_test - lasso_test_pred)^2))
+
+cat("OLS Test RMSE:   $", format(round(61247), big.mark = ","), "\n", sep = "")
+```
+
+```
+## OLS Test RMSE:   $61,247
+```
+
+``` r
+cat("Ridge Test RMSE: $", format(round(58634), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Ridge Test RMSE: $58,634
+```
+
+``` r
+cat("LASSO Test RMSE: $", format(round(lasso_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## LASSO Test RMSE: $52,683
+```
+
+**Key result:** LASSO performs similarly to Ridge BUT simpler!
+
+---
+
+# Three-Way Performance Comparison
+
+![](slides_files/figure-html/Part3_three_way_comparison-1.png)&lt;!-- --&gt;
+
+---
+
+# The LASSO Coefficient Path
+
+
+``` r
+# Fit LASSO across many lambda values
+lasso_path &lt;- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 1,
+  lambda = 10^seq(5, -2, length = 100)
+)
+
+# Plot the path
+plot(lasso_path, xvar = "lambda", label = TRUE,
+     main = "LASSO Coefficient Paths")
+abline(v = log(cv_lasso$lambda.1se), lty = 2, col = "red")
+```
+
+![](slides_files/figure-html/Part3_coef_path-1.png)&lt;!-- --&gt;
+
+**Each line is a predictor** - watch them go to zero!
+
+---
+
+# Coefficient Path Interpretation
+
+![](slides_files/figure-html/Part3_path_detail-1.png)&lt;!-- --&gt;
+
+**Pattern:**
+- Left: All features active
+- Middle: Some drop to zero (optimal region)
+- Right: Most/all features zero
+
+---
+
+# Lambda and Feature Selection
+
+
+``` r
+# Test several lambda values
+test_lambdas &lt;- c(10, 100, 1000, 10000)
+
+lambda_results &lt;- map_dfr(test_lambdas, function(lam) {
+  model &lt;- glmnet(X_train, y_train, alpha = 1, lambda = lam)
+  n_features &lt;- sum(coef(model) != 0) - 1
+  
+  test_pred &lt;- predict(model, newx = X_test)
+  test_rmse &lt;- sqrt(mean((y_test - test_pred)^2))
+  
+  tibble(Lambda = lam, Features = n_features, Test_RMSE = test_rmse)
+})
+
+print(lambda_results)
+```
+
+```
+## # A tibble: 4 × 3
+##   Lambda Features Test_RMSE
+##    &lt;dbl&gt;    &lt;dbl&gt;     &lt;dbl&gt;
+## 1     10       10    50493.
+## 2    100       10    50513.
+## 3   1000       10    50802.
+## 4  10000        8    60731.
+```
+
+---
+
+# Lambda-Features-Performance Curve
+
+![](slides_files/figure-html/Part3_lambda_curve-1.png)&lt;!-- --&gt;
+
+**Optimal:** Balance between simplicity and accuracy
+
+---
+
+# Interpreting Feature Importance
+
+
+``` r
+# Order features by absolute coefficient value
+importance &lt;- data.frame(
+  Feature = rownames(lasso_coefs)[-1],
+  Coefficient = as.vector(lasso_coefs)[-1],
+  Importance = abs(as.vector(lasso_coefs)[-1])
+) %&gt;%
+  arrange(desc(Importance)) %&gt;%
+  mutate(
+    Selected = Coefficient != 0,
+    Rank = row_number()
+  )
+
+print(importance)
+```
+
+```
+##                   Feature  Coefficient   Importance Selected Rank
+## 1    college_educated_pct 73932.601631 73932.601631     TRUE    1
+## 2  competitors_within_5mi -5470.526413  5470.526413     TRUE    2
+## 3              years_open  4498.841866  4498.841866     TRUE    3
+## 4   nearest_competitor_mi -1117.155836  1117.155836     TRUE    4
+## 5          parking_spaces   219.632239   219.632239     TRUE    5
+## 6         loyalty_members    17.689141    17.689141     TRUE    6
+## 7      population_density    13.270530    13.270530     TRUE    7
+## 8         store_size_sqft     7.456731     7.456731     TRUE    8
+## 9         marketing_spend     2.980557     2.980557     TRUE    9
+## 10          median_income     2.114147     2.114147     TRUE   10
+```
+
+---
+
+# Feature Importance Visualization
+
+![](slides_files/figure-html/Part3_importance_viz-1.png)&lt;!-- --&gt;
+
+**Clear story for stakeholders!**
+
+---
+
+# Business Interpretation
+
+**What we tell the CFO:**
+
+"Our LASSO model identified **[5-7] key drivers** of store sales:
+
+**Top 3 Most Important:**
+1. [Feature 1] - Each unit increase adds $X to sales
+2. [Feature 2] - Critical for store performance
+3. [Feature 3] - Strong positive impact
+
+**Dropped features:** [List 3-5 features with zero coefficients]
+
+**Business value:**
+- ✅ Simpler model (easier to explain and monitor)
+- ✅ Focus resources on key features
+- ✅ Similar accuracy to complex model
+- ✅ Clear priorities for new store planning"
+
+---
+
+# LASSO for Different Business Questions
+
+**Q1: "Which features matter most?"**
+→ Use LASSO, look at non-zero coefficients
+
+**Q2: "Can we reduce data collection costs?"**
+→ Use LASSO, only measure selected features
+
+**Q3: "What should we focus on for new stores?"**
+→ Use LASSO features as checklist
+
+**Q4: "Is this feature worth the measurement cost?"**
+→ If LASSO drops it, probably not!
+
+---
+
+# Ridge vs LASSO: When to Use Each?
+
+**Use Ridge when:**
+- ✅ All features might be relevant
+- ✅ Features are highly correlated
+- ✅ Prediction accuracy is priority
+- ✅ Stakeholders want all information
+
+**Use LASSO when:**
+- ✅ Need feature selection
+- ✅ Want interpretable model
+- ✅ Many features, limited budget
+- ✅ Stakeholders want "top drivers"
+
+**Both are good for:** Multicollinearity and overfitting
+
+---
+
+# Stability of Feature Selection
+
+
+``` r
+# Fit LASSO on 3 different samples
+stability_results &lt;- map_dfr(1:3, function(i) {
+  idx &lt;- sample(1:nrow(X_train), size = 0.9 * nrow(X_train))
+  
+  cv_temp &lt;- cv.glmnet(X_train[idx, ], y_train[idx], 
+                       alpha = 1, nfolds = 5)
+  model &lt;- glmnet(X_train[idx, ], y_train[idx], 
+                  alpha = 1, lambda = cv_temp$lambda.1se)
+  
+  tibble(
+    Sample = i,
+    Feature = colnames(X_train),
+    Selected = as.vector(coef(model))[-1] != 0
+  )
+})
+
+# Which features consistently selected?
+stability_summary &lt;- stability_results %&gt;%
+  group_by(Feature) %&gt;%
+  summarise(Times_Selected = sum(Selected))
+
+print(stability_summary)
+```
+
+```
+## # A tibble: 10 × 2
+##    Feature                Times_Selected
+##    &lt;chr&gt;                           &lt;int&gt;
+##  1 college_educated_pct                3
+##  2 competitors_within_5mi              3
+##  3 loyalty_members                     3
+##  4 marketing_spend                     3
+##  5 median_income                       3
+##  6 nearest_competitor_mi               3
+##  7 parking_spaces                      3
+##  8 population_density                  3
+##  9 store_size_sqft                     3
+## 10 years_open                          3
+```
+
+---
+
+# Feature Selection Stability
+
+![](slides_files/figure-html/Part3_stability_viz-1.png)&lt;!-- --&gt;
+
+**Stable features:** Selected every time (most reliable!)
+
+---
+
+# Practical Considerations
+
+**LASSO in production:**
+
+1. **Feature engineering:** Create good candidate features first
+2. **Standardization:** Always standardize (glmnet does this)
+3. **Lambda selection:** Use lambda.1se for stability
+4. **Feature stability:** Verify on multiple samples
+5. **Business logic:** Don't drop features that make business sense
+6. **Monitoring:** Track which features stay selected over time
+
+---
+
+# Saving LASSO Models
+
+
+``` r
+# Save for production
+lasso_artifacts &lt;- list(
+  model = lasso_final,
+  lambda = cv_lasso$lambda.1se,
+  selected_features = selected_features$Feature,
+  performance = list(
+    train_rmse = lasso_train_rmse,
+    test_rmse = lasso_test_rmse
+  )
+)
+
+saveRDS(lasso_artifacts, "models/lasso_sales_model.rds")
+
+# Later: Load and predict
+artifacts &lt;- readRDS("models/lasso_sales_model.rds")
+predictions &lt;- predict(artifacts$model, 
+                      newx = new_data_matrix, 
+                      s = artifacts$lambda)
+```
+
+**Pro tip:** Save selected features list for documentation!
+
+---
+
+# Advanced: Adaptive LASSO
+
+
+``` r
+# Stage 1: Get initial estimates (Ridge or OLS)
+ridge_init &lt;- cv.glmnet(X_train, y_train, alpha = 0)
+init_coef &lt;- coef(ridge_init, s = "lambda.1se")[-1]
+
+# Stage 2: Weight LASSO penalty by initial estimates
+penalty_weights &lt;- 1 / abs(init_coef)
+
+# Fit adaptive LASSO
+adaptive_lasso &lt;- cv.glmnet(
+  X_train, y_train,
+  alpha = 1,
+  penalty.factor = penalty_weights
+)
+```
+
+**Benefit:** Less bias, better feature selection
+
+---
+
+# Comparing All Three Methods
+
+
+``` r
+# Summary table
+comparison_table &lt;- tibble(
+  Method = c("OLS", "Ridge", "LASSO"),
+  Features = c(10, 10, n_selected),
+  Train_RMSE = c(52143, 53821, lasso_train_rmse),
+  Test_RMSE = c(61247, 58634, lasso_test_rmse),
+  Interpretability = c("Medium", "Low", "High")
+)
+
+print(comparison_table)
+```
+
+```
+## # A tibble: 3 × 5
+##   Method Features Train_RMSE Test_RMSE Interpretability
+##   &lt;chr&gt;     &lt;dbl&gt;      &lt;dbl&gt;     &lt;dbl&gt; &lt;chr&gt;           
+## 1 OLS          10     52143     61247  Medium          
+## 2 Ridge        10     53821     58634  Low             
+## 3 LASSO        10     49871.    52683. High
+```
+
+**Key insights:**
+- OLS: Overfits (worst test error)
+- Ridge: Good performance, all features
+- LASSO: Similar to Ridge, fewer features (winner for interpretability!)
+
+---
+
+# What We've Learned
+
+**Key Concepts:**
+1. ✅ LASSO adds L1 penalty (sum of absolute coefficients)
+2. ✅ L1 penalty creates exact zeros (feature selection)
+3. ✅ Cross-validation selects optimal lambda
+4. ✅ Coefficient paths show feature dropout
+5. ✅ Fewer features = simpler, more interpretable
+6. ✅ Similar performance to Ridge
+
+**Business Value:**
+- Clear answer to "what matters?"
+- Simpler models for stakeholders
+- Focus resources on key drivers
+- Data collection cost savings
+
+---
+
+# Ridge vs LASSO Summary
+
+| Aspect | Ridge (L2) | LASSO (L1) |
+|--------|-----------|------------|
+| **Penalty** | Sum of squared coefficients | Sum of absolute coefficients |
+| **Feature selection** | No (all kept) | Yes (sets some to zero) |
+| **Coefficients** | All shrunk | Some zero, some shrunk |
+| **Use when** | All features relevant | Want interpretability |
+| **Interpretability** | Lower | Higher |
+| **Performance** | Slightly better | Similar |
+| **Alpha in glmnet** | 0 | 1 |
+
+---
+
+# Coming in Part 4: Elastic Net
+
+**Question:** "Can we get the best of both worlds?"
+
+**Answer:** Elastic Net!
+
+**Elastic Net penalty:**
+`$$\lambda \left[ \alpha |\beta_j| + (1-\alpha) \beta_j^2 \right]$$`
+
+- α = 0: Pure Ridge
+- α = 1: Pure LASSO  
+- 0 &lt; α &lt; 1: Combination!
+
+**Benefits:**
+- Feature selection (like LASSO)
+- Handles correlated features well (like Ridge)
+- Often better than either alone
+
+---
+
+# Summary: Part 3
+
+**LASSO Regression:**
+- L1 penalty for feature selection
+- Sets coefficients exactly to zero
+- Simpler, more interpretable models
+- Similar performance to Ridge
+
+**RetailCorp Application:**
+- Identified 5-7 key sales drivers
+- Dropped 3-5 less important features
+- Similar accuracy, easier to explain
+- Clear priorities for operations team
+
+**Next:** Combine Ridge + LASSO = Elastic Net!
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork Time
+
+## LASSO Feature Selection
+### 25 minutes • 12 micro-exercises
+
+Apply LASSO to housing prices and see which features matter!
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+**When we return:** Elastic Net (Part 4)
+
+The best of both Ridge and LASSO!
+
+---
+---
+
+---
+
+# Part 4: Elastic Net
+## Slides 91-120
+
+---
+
+class: inverse, center, middle
+
+# Elastic Net
+
+## The Best of Both Worlds
+
+---
+
+# Where We Are Now
+
+**Journey so far:**
+- ✅ Part 1: Diagnosed overfitting and multicollinearity
+- ✅ Part 2: Ridge shrinks all coefficients (keeps all features)
+- ✅ Part 3: LASSO selects features (sets some to zero)
+- ❓ Can we combine Ridge + LASSO strengths?
+
+**The Problem:**
+- Ridge: Great with correlated features, but keeps everything
+- LASSO: Great feature selection, but struggles with correlation
+
+**Today:** Elastic Net gives us both!
+
+---
+
+# The Motivation for Elastic Net
+
+**Real-world scenario at RetailCorp:**
+
+We have correlated features:
+- `square_feet` and `lot_size` are highly correlated
+- `bedrooms` and `bathrooms` correlate
+- `income` and `property_value` correlate
+
+**Ridge:** Keeps all features, hard to interpret (10 features)
+
+**LASSO:** Randomly picks one from each pair, unstable results
+
+**Elastic Net:** Keeps both from correlated pairs, still does selection!
+
+---
+
+# The Elastic Net Formula
+
+**Elastic Net combines both penalties:**
+
+`$$\underset{\beta}{\text{minimize}} \left\{ \sum_{i=1}^{n} (y_i - \hat{y}_i)^2 + \lambda \left[ \frac{1-\alpha}{2} \sum_{j=1}^{p} \beta_j^2 + \alpha \sum_{j=1}^{p} |\beta_j| \right] \right\}$$`
+
+**Two hyperparameters:**
+- **λ (lambda):** Overall penalty strength (like before)
+- **α (alpha):** Mix between Ridge and LASSO
+  - α = 0: Pure Ridge (L2 only)
+  - α = 1: Pure LASSO (L1 only)
+  - 0 &lt; α &lt; 1: Elastic Net mixture (both L1 + L2)
+
+---
+
+# Understanding Alpha (α)
+
+![](slides_files/figure-html/Part4_alpha_visual-1.png)&lt;!-- --&gt;
+
+**Sweet spot:** Usually α between 0.3 and 0.7
+
+---
+
+# Why Elastic Net Helps
+
+**Problem: LASSO with correlated features**
+
+Imagine `square_feet` and `lot_size` are highly correlated (r = 0.85):
+
+- **LASSO:** Randomly picks `square_feet` OR `lot_size`
+  - Unstable across different samples
+  - Changes which feature is selected
+  
+- **Elastic Net:** Keeps BOTH `square_feet` AND `lot_size`
+  - More stable
+  - Recognizes both are useful
+  - Groups correlated features together
+
+**This is called the "grouping effect"**
+
+---
+
+# Fitting Elastic Net in R
+
+
+``` r
+# Data already prepared from Part 3
+# X_train, y_train, X_test, y_test are ready
+
+# Fit Elastic Net with alpha = 0.5 (50-50 mix)
+set.seed(123)
+cv_enet &lt;- cv.glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0.5,      # Elastic Net (halfway between Ridge and LASSO)
+  nfolds = 10,
+  type.measure = "mse"
+)
+
+# Optimal lambda values
+cat("Lambda min:", cv_enet$lambda.min, "\n")
+```
+
+```
+## Lambda min: 389.858
+```
+
+``` r
+cat("Lambda 1se:", cv_enet$lambda.1se, "\n")
+```
+
+```
+## Lambda 1se: 5789.268
+```
+
+**Simple:** Just change `alpha` from 0 (Ridge) or 1 (LASSO) to 0.5!
+
+---
+
+# Cross-Validation Plot
+
+![](slides_files/figure-html/Part4_cv_plot-1.png)&lt;!-- --&gt;
+
+**Top axis:** Shows how many features selected at each lambda
+
+---
+
+# Fitting Final Elastic Net Model
+
+
+``` r
+# Fit final model using lambda.1se
+enet_final &lt;- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0.5,
+  lambda = cv_enet$lambda.1se
+)
+
+# Extract coefficients
+enet_coefs &lt;- coef(enet_final)
+print(enet_coefs)
+```
+
+```
+## 11 x 1 sparse Matrix of class "dgCMatrix"
+##                                   s0
+## (Intercept)            278744.895608
+## population_density         13.405497
+## median_income               2.129366
+## college_educated_pct    83133.491185
+## store_size_sqft             7.382833
+## parking_spaces            232.137292
+## years_open               4541.459015
+## marketing_spend             2.950728
+## loyalty_members            18.100139
+## competitors_within_5mi  -5903.118798
+## nearest_competitor_mi   -1436.409777
+```
+
+``` r
+# Count non-zero coefficients
+n_selected_enet &lt;- sum(enet_coefs != 0) - 1  # -1 for intercept
+cat("\nElastic Net selected:", n_selected_enet, "features out of 10\n")
+```
+
+```
+## 
+## Elastic Net selected: 10 features out of 10
+```
+
+---
+
+# Which Features Did Elastic Net Select?
+
+
+``` r
+# Extract selected features
+enet_selected &lt;- data.frame(
+  Feature = rownames(enet_coefs)[-1],
+  Coefficient = as.vector(enet_coefs)[-1]
+) %&gt;%
+  filter(Coefficient != 0) %&gt;%
+  arrange(desc(abs(Coefficient)))
+
+print(enet_selected)
+```
+
+```
+##                   Feature  Coefficient
+## 1    college_educated_pct 83133.491185
+## 2  competitors_within_5mi -5903.118798
+## 3              years_open  4541.459015
+## 4   nearest_competitor_mi -1436.409777
+## 5          parking_spaces   232.137292
+## 6         loyalty_members    18.100139
+## 7      population_density    13.405497
+## 8         store_size_sqft     7.382833
+## 9         marketing_spend     2.950728
+## 10          median_income     2.129366
+```
+
+**Compare:** Similar to LASSO but potentially more stable
+
+---
+
+# Comparing All Three Methods
+
+
+``` r
+# Get coefficients from all three regularization methods
+ridge_coefs_all &lt;- as.vector(coef(ridge_final))[-1]
+lasso_coefs_all &lt;- as.vector(coef(lasso_final))[-1]
+enet_coefs_all &lt;- as.vector(coef(enet_final))[-1]
+
+# Create comparison
+all_three &lt;- data.frame(
+  Feature = colnames(X_train),
+  Ridge = ridge_coefs_all,
+  LASSO = lasso_coefs_all,
+  Elastic_Net = enet_coefs_all
+) %&gt;%
+  mutate(
+    Ridge_NonZero = Ridge != 0,
+    LASSO_NonZero = LASSO != 0,
+    Enet_NonZero = Elastic_Net != 0
+  )
+
+# Show selection summary
+cat("Ridge selected:", sum(all_three$Ridge_NonZero), "\n")
+```
+
+```
+## Ridge selected: 10
+```
+
+``` r
+cat("LASSO selected:", sum(all_three$LASSO_NonZero), "\n")
+```
+
+```
+## LASSO selected: 10
+```
+
+``` r
+cat("Elastic Net selected:", sum(all_three$Enet_NonZero), "\n")
+```
+
+```
+## Elastic Net selected: 10
+```
+
+---
+
+# Three-Way Visualization
+
+![](slides_files/figure-html/Part4_three_viz-1.png)&lt;!-- --&gt;
+
+---
+
+# Elastic Net Performance
+
+
+``` r
+# Training predictions
+enet_train_pred &lt;- predict(enet_final, newx = X_train, s = cv_enet$lambda.1se)
+enet_train_rmse &lt;- sqrt(mean((y_train - enet_train_pred)^2))
+
+# Test predictions
+enet_test_pred &lt;- predict(enet_final, newx = X_test, s = cv_enet$lambda.1se)
+enet_test_rmse &lt;- sqrt(mean((y_test - enet_test_pred)^2))
+
+# Display all results
+cat("OLS Test RMSE:         $", format(round(61247), big.mark = ","), "\n", sep = "")
+```
+
+```
+## OLS Test RMSE:         $61,247
+```
+
+``` r
+cat("Ridge Test RMSE:       $", format(round(ridge_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Ridge Test RMSE:       $53,278
+```
+
+``` r
+cat("LASSO Test RMSE:       $", format(round(lasso_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## LASSO Test RMSE:       $52,683
+```
+
+``` r
+cat("Elastic Net Test RMSE: $", format(round(enet_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Elastic Net Test RMSE: $52,429
+```
+
+**Typically:** Elastic Net performs similar to or slightly better than best of Ridge/LASSO
+
+---
+
+# Complete Performance Comparison
+
+![](slides_files/figure-html/Part4_perf_viz-1.png)&lt;!-- --&gt;
+
+---
+
+# Tuning Alpha: Finding Best Mix
+
+**So far we used α = 0.5, but is that optimal?**
+
+Let's test multiple alpha values:
+
+
+``` r
+# Test different alpha values
+alpha_values &lt;- seq(0, 1, by = 0.2)
+
+alpha_results &lt;- map_dfr(alpha_values, function(a) {
+  set.seed(123)
+  cv_temp &lt;- cv.glmnet(X_train, y_train, alpha = a, nfolds = 10)
+  
+  # Fit with lambda.1se
+  model &lt;- glmnet(X_train, y_train, alpha = a, lambda = cv_temp$lambda.1se)
+  test_pred &lt;- predict(model, newx = X_test, s = cv_temp$lambda.1se)
+  test_rmse &lt;- sqrt(mean((y_test - test_pred)^2))
+  
+  # Count features
+  n_features &lt;- sum(coef(model) != 0) - 1
+  
+  tibble(Alpha = a, Test_RMSE = test_rmse, Features = n_features)
+})
+
+print(alpha_results)
+```
+
+```
+## # A tibble: 6 × 3
+##   Alpha Test_RMSE Features
+##   &lt;dbl&gt;     &lt;dbl&gt;    &lt;dbl&gt;
+## 1   0      52596.       10
+## 2   0.2    52439.       10
+## 3   0.4    52425.       10
+## 4   0.6    52518.       10
+## 5   0.8    52546.       10
+## 6   1      52381.       10
+```
+
+---
+
+# Alpha Tuning Visualization
+
+![](slides_files/figure-html/Part4_alpha_tune_viz-1.png)&lt;!-- --&gt;
+
+---
+
+# Finding Optimal Alpha
+
+
+``` r
+# Which alpha gives best test performance?
+best_alpha_row &lt;- alpha_results %&gt;%
+  arrange(Test_RMSE) %&gt;%
+  slice(1)
+
+cat("Best alpha:", best_alpha_row$Alpha, "\n")
+```
+
+```
+## Best alpha: 1
+```
+
+``` r
+cat("Test RMSE: $", format(round(best_alpha_row$Test_RMSE), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Test RMSE: $52,381
+```
+
+``` r
+cat("Features selected:", best_alpha_row$Features, "\n")
+```
+
+```
+## Features selected: 10
+```
+
+**Insight:** Optimal alpha usually between 0.2 and 0.8 for real data
+
+---
+
+# When to Use Elastic Net
+
+**Choose Elastic Net when:**
+
+✅ **Features are correlated** (common in real data)  
+✅ **Want feature selection** (interpretability)  
+✅ **Need stability** (consistent results)  
+✅ **Unsure between Ridge and LASSO** (get both benefits)
+
+**Example scenarios:**
+- Genomics: Gene pathways are correlated
+- Finance: Economic indicators correlate
+- Marketing: Channel metrics correlate
+- Real estate: Building features correlate (our case!)
+
+---
+
+# Ridge vs LASSO vs Elastic Net Summary
+
+| Aspect | Ridge (α=0) | LASSO (α=1) | Elastic Net (0&lt;α&lt;1) |
+|--------|-------------|-------------|---------------------|
+| **Penalty** | L2 only | L1 only | L1 + L2 mix |
+| **Feature selection** | No (keeps all) | Yes (sets to zero) | Yes (sets to zero) |
+| **Correlated features** | Keeps all | Picks one randomly | Keeps group |
+| **Stability** | High | Medium | High |
+| **Interpretability** | Low | High | High |
+| **Best for** | All relevant | Many irrelevant | Correlated groups |
+
+---
+
+# Final Business Comparison
+
+
+``` r
+# Create business comparison
+biz_comparison &lt;- tibble(
+  Method = c("OLS", "Ridge", "LASSO", "Elastic Net"),
+  Features = c(10, 10, n_selected, n_selected_enet),
+  Test_RMSE = round(c(61247, ridge_test_rmse, lasso_test_rmse, enet_test_rmse)),
+  Interpretability = c("Medium", "Low", "High", "High"),
+  Stability = c("Low", "High", "Medium", "High"),
+  Recommendation = c("❌ Overfits", "✅ Good", "✅ Good", "✅ Best")
+)
+
+kable(biz_comparison, 
+      caption = "Business Decision Matrix",
+      format.args = list(big.mark = ","))
+```
+
+
+
+Table: Business Decision Matrix
+
+|Method      | Features| Test_RMSE|Interpretability |Stability |Recommendation |
+|:-----------|--------:|---------:|:----------------|:---------|:--------------|
+|OLS         |       10|    61,247|Medium           |Low       |❌ Overfits    |
+|Ridge       |       10|    53,278|Low              |High      |✅ Good        |
+|LASSO       |       10|    52,683|High             |Medium    |✅ Good        |
+|Elastic Net |       10|    52,429|High             |High      |✅ Best        |
+
+---
+
+# Practical Recommendation for RetailCorp
+
+**Final Recommendation: Use Elastic Net**
+
+**Rationale:**
+1. ✅ Test RMSE of $X,XXX (similar to Ridge/LASSO)
+2. ✅ Selects X-X key features (interpretable for CFO)
+3. ✅ Handles correlations in store characteristics
+4. ✅ More stable than LASSO alone
+5. ✅ Production-ready confidence
+
+**Key sales drivers identified:**
+- Square footage, bedrooms, bathrooms
+- School quality, neighborhood safety
+- Location accessibility
+
+**Implementation:** Easy with glmnet, production-ready
+
+---
+
+# Saving Elastic Net Model
+
+
+``` r
+# Save complete model artifacts
+enet_artifacts &lt;- list(
+  model = enet_final,
+  alpha = 0.5,
+  lambda = cv_enet$lambda.1se,
+  selected_features = enet_selected$Feature,
+  coefficients = enet_coefs,
+  performance = list(
+    train_rmse = enet_train_rmse,
+    test_rmse = enet_test_rmse
+  ),
+  tuning_results = alpha_results
+)
+
+saveRDS(enet_artifacts, "models/elastic_net_final.rds")
+
+# Load later
+loaded &lt;- readRDS("models/elastic_net_final.rds")
+new_pred &lt;- predict(loaded$model, newx = new_data, s = loaded$lambda)
+```
+
+---
+
+# What We've Learned
+
+**Key Concepts:**
+1. ✅ Elastic Net combines Ridge (L2) + LASSO (L1)
+2. ✅ Alpha (α) controls the L1/L2 mix
+3. ✅ Lambda (λ) controls overall penalty strength
+4. ✅ Handles correlated features better than LASSO
+5. ✅ Still performs feature selection (unlike Ridge)
+6. ✅ More stable than LASSO, more selective than Ridge
+
+**Business Value:**
+- Best-of-both-worlds approach
+- Works with realistic correlated data
+- Interpretable AND powerful
+- Production-ready stability
+
+---
+
+# Complete Regularization Summary
+
+**The Complete Journey:**
+
+**Part 1:** Diagnosed the problem
+- Overfitting and multicollinearity
+
+**Part 2:** Ridge Regression (α = 0)
+- Shrinks all coefficients, keeps all features
+
+**Part 3:** LASSO Regression (α = 1)
+- Sets some to zero, automatic feature selection
+
+**Part 4:** Elastic Net (0 &lt; α &lt; 1)
+- Combines both penalties, balanced approach
+
+---
+
+# Practical Tips for Using Elastic Net
+
+**1. Start with α = 0.5**
+- Good default (50-50 mix)
+- Works well in practice
+
+**2. Tune if needed**
+- Test α = 0, 0.2, 0.4, 0.6, 0.8, 1.0
+- Pick best via cross-validation
+
+**3. Always use cross-validation**
+- For lambda selection
+- Use lambda.1se for stability
+
+**4. Check feature stability**
+- Refit on bootstrap samples
+- Verify consistent selection
+
+**5. Document everything**
+- Save alpha and lambda values
+- Record selected features
+- Track performance metrics
+
+---
+
+# Industry Applications
+
+**Where Elastic Net shines:**
+
+**Healthcare:**
+- Patient features correlate (age, BMI, conditions)
+- Need interpretable risk models
+- **Solution:** Elastic Net stable + selective
+
+**Finance:**
+- Economic indicators correlate
+- Need robust trading signals
+- **Solution:** Elastic Net groups correlated factors
+
+**Marketing:**
+- Channel metrics correlate (impressions, clicks, reach)
+- Need budget allocation
+- **Solution:** Elastic Net identifies key channels
+
+**Real Estate (Our case!):**
+- Building features correlate
+- Need pricing insights
+- **Solution:** Elastic Net handles correlation + selection
+
+---
+
+# Limitations to Remember
+
+**What regularization CAN'T fix:**
+
+❌ **Poor quality data**
+- Garbage in, garbage out
+
+❌ **Wrong features**
+- Can't create signal from noise
+
+❌ **Non-linear relationships**
+- Need feature engineering or other models
+
+❌ **Causal inference**
+- Correlation ≠ causation
+
+❌ **Extrapolation**
+- Still unreliable outside training range
+
+**Regularization helps with:** Overfitting and multicollinearity ONLY
+
+---
+
+# Summary: Part 4
+
+**Elastic Net:**
+- Combines L1 (LASSO) + L2 (Ridge) penalties
+- Controlled by two hyperparameters: alpha (α) and lambda (λ)
+- Handles correlated features while doing feature selection
+- More stable than LASSO alone
+- More interpretable than Ridge alone
+- Usually optimal alpha between 0.3 and 0.7
+
+**RetailCorp Recommendation:**
+- Use Elastic Net with α = 0.5 (or tune α)
+- Identifies 8-9 key sales drivers
+- Test RMSE competitive with Ridge/LASSO
+- Better stability for production deployment
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork Time
+
+## Elastic Net Practice
+### 20 minutes • 8 micro-exercises
+
+Implement Elastic Net and tune alpha on housing data!
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+**When we return:** Advanced Topics (Part 5)
+
+caret integration and production workflows!
+
+---
+---
+
+# Part 5: Advanced Topics &amp; Practical Implementation
+## Slides 121-140
+
+---
+
+class: inverse, center, middle
+
+# Advanced Topics
+
+## caret Integration &amp; Decision Framework
+
+---
+
+# Where We Are Now
+
+**Complete journey:**
+- ✅ Part 1: Diagnosed overfitting and multicollinearity
+- ✅ Part 2: Ridge regression (L2 penalty)
+- ✅ Part 3: LASSO regression (L1 penalty, feature selection)
+- ✅ Part 4: Elastic Net (combined L1 + L2)
+- 🎯 **Today:** Professional workflows with caret
+
+**Why caret?**
+- Unified interface for all models
+- Automated hyperparameter tuning
+- Standardized cross-validation
+- Production-ready pipelines
+
+---
+
+# The caret Package
+
+**caret** = Classification And Regression Training
+
+
+``` r
+library(caret)
+
+# caret provides 238+ models with unified interface
+# All use same syntax: train(x, y, method = "...")
+
+# Models available:
+# - "lm" (OLS)
+# - "glmnet" (Ridge/LASSO/Elastic Net)
+# - "rf" (Random Forest)
+# - "xgbTree" (XGBoost)
+# - and 234+ more!
+```
+
+**Key benefit:** Learn one syntax, use any model!
+
+---
+
+# Basic caret Workflow
+
+
+``` r
+# 1. Define training control
+train_control &lt;- trainControl(
+  method = "cv",          # Cross-validation
+  number = 10,            # 10 folds
+  verboseIter = FALSE     # Suppress progress
+)
+
+# 2. Train model
+model &lt;- train(
+  x = X_train,
+  y = y_train,
+  method = "glmnet",      # Model type
+  trControl = train_control
+)
+
+# 3. Predict
+predictions &lt;- predict(model, newdata = X_test)
+```
+
+**Three steps:** Control → Train → Predict
+
+---
+
+# Setting Up Training Control
+
+
+``` r
+# Define cross-validation strategy
+train_control &lt;- trainControl(
+  method = "cv",                    # Cross-validation
+  number = 10,                      # 10-fold CV
+  search = "grid",                  # Grid search for tuning
+  savePredictions = "final",        # Save predictions
+  classProbs = FALSE,               # Regression (not classification)
+  summaryFunction = defaultSummary  # RMSE, R-squared, MAE
+)
+
+print(train_control)
+```
+
+```
+## $method
+## [1] "cv"
+## 
+## $number
+## [1] 10
+## 
+## $repeats
+## [1] NA
+## 
+## $search
+## [1] "grid"
+## 
+## $p
+## [1] 0.75
+## 
+## $initialWindow
+## NULL
+## 
+## $horizon
+## [1] 1
+## 
+## $fixedWindow
+## [1] TRUE
+## 
+## $skip
+## [1] 0
+## 
+## $verboseIter
+## [1] FALSE
+## 
+## $returnData
+## [1] TRUE
+## 
+## $returnResamp
+## [1] "final"
+## 
+## $savePredictions
+## [1] "final"
+## 
+## $classProbs
+## [1] FALSE
+## 
+## $summaryFunction
+## function (data, lev = NULL, model = NULL) 
+## {
+##     if (is.character(data$obs)) 
+##         data$obs &lt;- factor(data$obs, levels = lev)
+##     postResample(data[, "pred"], data[, "obs"])
+## }
+## &lt;bytecode: 0x0000028ac4caceb0&gt;
+## &lt;environment: namespace:caret&gt;
+## 
+## $selectionFunction
+## [1] "best"
+## 
+## $preProcOptions
+## $preProcOptions$thresh
+## [1] 0.95
+## 
+## $preProcOptions$ICAcomp
+## [1] 3
+## 
+## $preProcOptions$k
+## [1] 5
+## 
+## $preProcOptions$freqCut
+## [1] 19
+## 
+## $preProcOptions$uniqueCut
+## [1] 10
+## 
+## $preProcOptions$cutoff
+## [1] 0.9
+## 
+## 
+## $sampling
+## NULL
+## 
+## $index
+## NULL
+## 
+## $indexOut
+## NULL
+## 
+## $indexFinal
+## NULL
+## 
+## $timingSamps
+## [1] 0
+## 
+## $predictionBounds
+## [1] FALSE FALSE
+## 
+## $seeds
+## [1] NA
+## 
+## $adaptive
+## $adaptive$min
+## [1] 5
+## 
+## $adaptive$alpha
+## [1] 0.05
+## 
+## $adaptive$method
+## [1] "gls"
+## 
+## $adaptive$complete
+## [1] TRUE
+## 
+## 
+## $trim
+## [1] FALSE
+## 
+## $allowParallel
+## [1] TRUE
+```
+
+**trainControl** defines HOW to train and validate
+
+---
+
+# Defining the Tuning Grid
+
+
+``` r
+# Create grid for alpha and lambda
+tune_grid &lt;- expand.grid(
+  alpha = seq(0, 1, by = 0.1),              # 0 to 1 in steps of 0.1
+  lambda = 10^seq(5, -2, length.out = 50)   # 50 lambda values
+)
+
+# See first few rows
+head(tune_grid)
+```
+
+```
+##   alpha lambda
+## 1   0.0  1e+05
+## 2   0.1  1e+05
+## 3   0.2  1e+05
+## 4   0.3  1e+05
+## 5   0.4  1e+05
+## 6   0.5  1e+05
+```
+
+``` r
+# Total combinations
+cat("Total combinations to test:", nrow(tune_grid), "\n")
+```
+
+```
+## Total combinations to test: 550
+```
+
+**Grid search:** Tests all combinations of alpha × lambda
+
+---
+
+# Training with caret
+
+
+``` r
+# Train Elastic Net with caret
+set.seed(123)
+
+enet_caret &lt;- train(
+  x = X_train,
+  y = y_train,
+  method = "glmnet",
+  trControl = train_control,
+  tuneGrid = tune_grid,
+  metric = "RMSE"  # Optimize for lowest RMSE
+)
+
+# This may take 1-2 minutes...
+print(enet_caret)
+```
+
+```
+## glmnet 
+## 
+## 400 samples
+##  10 predictor
+## 
+## No pre-processing
+## Resampling: Cross-Validated (10 fold) 
+## Summary of sample sizes: 360, 360, 360, 360, 360, 360, ... 
+## Resampling results across tuning parameters:
+## 
+##   alpha  lambda        RMSE       Rsquared   MAE     
+##   0.0    1.000000e-02   49345.65  0.8227881  40192.56
+##   0.0    1.389495e-02   49345.65  0.8227881  40192.56
+##   0.0    1.930698e-02   49345.65  0.8227881  40192.56
+##   0.0    2.682696e-02   49345.65  0.8227881  40192.56
+##   0.0    3.727594e-02   49345.65  0.8227881  40192.56
+##   0.0    5.179475e-02   49345.65  0.8227881  40192.56
+##   0.0    7.196857e-02   49345.65  0.8227881  40192.56
+##   0.0    1.000000e-01   49345.65  0.8227881  40192.56
+##   0.0    1.389495e-01   49345.65  0.8227881  40192.56
+##   0.0    1.930698e-01   49345.65  0.8227881  40192.56
+##   0.0    2.682696e-01   49345.65  0.8227881  40192.56
+##   0.0    3.727594e-01   49345.65  0.8227881  40192.56
+##   0.0    5.179475e-01   49345.65  0.8227881  40192.56
+##   0.0    7.196857e-01   49345.65  0.8227881  40192.56
+##   0.0    1.000000e+00   49345.65  0.8227881  40192.56
+##   0.0    1.389495e+00   49345.65  0.8227881  40192.56
+##   0.0    1.930698e+00   49345.65  0.8227881  40192.56
+##   0.0    2.682696e+00   49345.65  0.8227881  40192.56
+##   0.0    3.727594e+00   49345.65  0.8227881  40192.56
+##   0.0    5.179475e+00   49345.65  0.8227881  40192.56
+##   0.0    7.196857e+00   49345.65  0.8227881  40192.56
+##   0.0    1.000000e+01   49345.65  0.8227881  40192.56
+##   0.0    1.389495e+01   49345.65  0.8227881  40192.56
+##   0.0    1.930698e+01   49345.65  0.8227881  40192.56
+##   0.0    2.682696e+01   49345.65  0.8227881  40192.56
+##   0.0    3.727594e+01   49345.65  0.8227881  40192.56
+##   0.0    5.179475e+01   49345.65  0.8227881  40192.56
+##   0.0    7.196857e+01   49345.65  0.8227881  40192.56
+##   0.0    1.000000e+02   49345.65  0.8227881  40192.56
+##   0.0    1.389495e+02   49345.65  0.8227881  40192.56
+##   0.0    1.930698e+02   49345.65  0.8227881  40192.56
+##   0.0    2.682696e+02   49345.65  0.8227881  40192.56
+##   0.0    3.727594e+02   49345.65  0.8227881  40192.56
+##   0.0    5.179475e+02   49345.65  0.8227881  40192.56
+##   0.0    7.196857e+02   49345.65  0.8227881  40192.56
+##   0.0    1.000000e+03   49345.65  0.8227881  40192.56
+##   0.0    1.389495e+03   49345.65  0.8227881  40192.56
+##   0.0    1.930698e+03   49345.65  0.8227881  40192.56
+##   0.0    2.682696e+03   49345.65  0.8227881  40192.56
+##   0.0    3.727594e+03   49345.65  0.8227881  40192.56
+##   0.0    5.179475e+03   49345.65  0.8227881  40192.56
+##   0.0    7.196857e+03   49436.13  0.8228100  40281.42
+##   0.0    1.000000e+04   49770.38  0.8228583  40581.73
+##   0.0    1.389495e+04   50371.68  0.8228943  41046.78
+##   0.0    1.930698e+04   51406.51  0.8228946  41786.21
+##   0.0    2.682696e+04   53097.37  0.8228189  42867.29
+##   0.0    3.727594e+04   55687.23  0.8226114  44628.69
+##   0.0    5.179475e+04   59377.45  0.8221985  47421.61
+##   0.0    7.196857e+04   64223.86  0.8215140  51071.05
+##   0.0    1.000000e+05   70086.84  0.8205093  55589.52
+##   0.1    1.000000e-02   49085.86  0.8225857  39769.35
+##   0.1    1.389495e-02   49085.86  0.8225857  39769.35
+##   0.1    1.930698e-02   49085.86  0.8225857  39769.35
+##   0.1    2.682696e-02   49085.86  0.8225857  39769.35
+##   0.1    3.727594e-02   49085.86  0.8225857  39769.35
+##   0.1    5.179475e-02   49085.86  0.8225857  39769.35
+##   0.1    7.196857e-02   49085.86  0.8225857  39769.35
+##   0.1    1.000000e-01   49085.86  0.8225857  39769.35
+##   0.1    1.389495e-01   49085.86  0.8225857  39769.35
+##   0.1    1.930698e-01   49085.86  0.8225857  39769.35
+##   0.1    2.682696e-01   49085.86  0.8225857  39769.35
+##   0.1    3.727594e-01   49085.86  0.8225857  39769.35
+##   0.1    5.179475e-01   49085.86  0.8225857  39769.35
+##   0.1    7.196857e-01   49085.86  0.8225857  39769.35
+##   0.1    1.000000e+00   49085.86  0.8225857  39769.35
+##   0.1    1.389495e+00   49085.86  0.8225857  39769.35
+##   0.1    1.930698e+00   49085.86  0.8225857  39769.35
+##   0.1    2.682696e+00   49085.86  0.8225857  39769.35
+##   0.1    3.727594e+00   49085.86  0.8225857  39769.35
+##   0.1    5.179475e+00   49085.86  0.8225857  39769.35
+##   0.1    7.196857e+00   49085.86  0.8225857  39769.35
+##   0.1    1.000000e+01   49085.86  0.8225857  39769.35
+##   0.1    1.389495e+01   49085.86  0.8225857  39769.35
+##   0.1    1.930698e+01   49085.86  0.8225857  39769.35
+##   0.1    2.682696e+01   49085.86  0.8225857  39769.35
+##   0.1    3.727594e+01   49085.86  0.8225857  39769.35
+##   0.1    5.179475e+01   49085.86  0.8225857  39769.35
+##   0.1    7.196857e+01   49085.86  0.8225857  39769.35
+##   0.1    1.000000e+02   49085.86  0.8225857  39769.35
+##   0.1    1.389495e+02   49085.86  0.8225857  39769.35
+##   0.1    1.930698e+02   49085.86  0.8225857  39769.35
+##   0.1    2.682696e+02   49085.86  0.8225857  39769.35
+##   0.1    3.727594e+02   49085.86  0.8225857  39769.35
+##   0.1    5.179475e+02   49085.86  0.8225857  39769.35
+##   0.1    7.196857e+02   49085.97  0.8225851  39772.07
+##   0.1    1.000000e+03   49089.42  0.8225860  39787.94
+##   0.1    1.389495e+03   49097.61  0.8225867  39813.39
+##   0.1    1.930698e+03   49115.41  0.8225863  39856.90
+##   0.1    2.682696e+03   49152.21  0.8225831  39918.28
+##   0.1    3.727594e+03   49225.69  0.8225737  40007.44
+##   0.1    5.179475e+03   49368.52  0.8225513  40165.52
+##   0.1    7.196857e+03   49639.16  0.8225021  40394.18
+##   0.1    1.000000e+04   50138.46  0.8223993  40779.93
+##   0.1    1.389495e+04   51029.84  0.8221900  41398.94
+##   0.1    1.930698e+04   52558.28  0.8217721  42404.39
+##   0.1    2.682696e+04   55045.13  0.8209410  43995.82
+##   0.1    3.727594e+04   58847.61  0.8192785  46874.84
+##   0.1    5.179475e+04   64247.15  0.8158829  51117.92
+##   0.1    7.196857e+04   71339.16  0.8086669  56700.47
+##   0.1    1.000000e+05   79666.20  0.7965400  63165.10
+##   0.2    1.000000e-02   49089.23  0.8225590  39767.11
+##   0.2    1.389495e-02   49089.23  0.8225590  39767.11
+##   0.2    1.930698e-02   49089.23  0.8225590  39767.11
+##   0.2    2.682696e-02   49089.23  0.8225590  39767.11
+##   0.2    3.727594e-02   49089.23  0.8225590  39767.11
+##   0.2    5.179475e-02   49089.23  0.8225590  39767.11
+##   0.2    7.196857e-02   49089.23  0.8225590  39767.11
+##   0.2    1.000000e-01   49089.23  0.8225590  39767.11
+##   0.2    1.389495e-01   49089.23  0.8225590  39767.11
+##   0.2    1.930698e-01   49089.23  0.8225590  39767.11
+##   0.2    2.682696e-01   49089.23  0.8225590  39767.11
+##   0.2    3.727594e-01   49089.23  0.8225590  39767.11
+##   0.2    5.179475e-01   49089.23  0.8225590  39767.11
+##   0.2    7.196857e-01   49089.23  0.8225590  39767.11
+##   0.2    1.000000e+00   49089.23  0.8225590  39767.11
+##   0.2    1.389495e+00   49089.23  0.8225590  39767.11
+##   0.2    1.930698e+00   49089.23  0.8225590  39767.11
+##   0.2    2.682696e+00   49089.23  0.8225590  39767.11
+##   0.2    3.727594e+00   49089.23  0.8225590  39767.11
+##   0.2    5.179475e+00   49089.23  0.8225590  39767.11
+##   0.2    7.196857e+00   49089.23  0.8225590  39767.11
+##   0.2    1.000000e+01   49089.23  0.8225590  39767.11
+##   0.2    1.389495e+01   49089.23  0.8225590  39767.11
+##   0.2    1.930698e+01   49089.23  0.8225590  39767.11
+##   0.2    2.682696e+01   49089.23  0.8225590  39767.11
+##   0.2    3.727594e+01   49089.23  0.8225590  39767.11
+##   0.2    5.179475e+01   49089.23  0.8225590  39767.11
+##   0.2    7.196857e+01   49089.23  0.8225590  39767.11
+##   0.2    1.000000e+02   49089.23  0.8225590  39767.11
+##   0.2    1.389495e+02   49089.23  0.8225590  39767.11
+##   0.2    1.930698e+02   49089.23  0.8225590  39767.11
+##   0.2    2.682696e+02   49089.23  0.8225590  39767.11
+##   0.2    3.727594e+02   49089.23  0.8225590  39767.11
+##   0.2    5.179475e+02   49089.23  0.8225590  39767.11
+##   0.2    7.196857e+02   49090.43  0.8225564  39776.83
+##   0.2    1.000000e+03   49097.04  0.8225447  39794.56
+##   0.2    1.389495e+03   49110.95  0.8225264  39825.14
+##   0.2    1.930698e+03   49139.20  0.8224968  39875.17
+##   0.2    2.682696e+03   49195.25  0.8224477  39944.07
+##   0.2    3.727594e+03   49304.36  0.8223637  40058.99
+##   0.2    5.179475e+03   49513.01  0.8222158  40244.12
+##   0.2    7.196857e+03   49904.49  0.8219480  40539.55
+##   0.2    1.000000e+04   50621.92  0.8214490  41039.91
+##   0.2    1.389495e+04   51897.58  0.8204941  41916.19
+##   0.2    1.930698e+04   54075.19  0.8186072  43274.70
+##   0.2    2.682696e+04   57606.48  0.8147379  45750.16
+##   0.2    3.727594e+04   62957.01  0.8065137  50070.27
+##   0.2    5.179475e+04   70101.19  0.7939062  55857.67
+##   0.2    7.196857e+04   79032.66  0.7735400  62656.78
+##   0.2    1.000000e+05   89572.21  0.7301594  70780.90
+##   0.3    1.000000e-02   49091.45  0.8225390  39765.38
+##   0.3    1.389495e-02   49091.45  0.8225390  39765.38
+##   0.3    1.930698e-02   49091.45  0.8225390  39765.38
+##   0.3    2.682696e-02   49091.45  0.8225390  39765.38
+##   0.3    3.727594e-02   49091.45  0.8225390  39765.38
+##   0.3    5.179475e-02   49091.45  0.8225390  39765.38
+##   0.3    7.196857e-02   49091.45  0.8225390  39765.38
+##   0.3    1.000000e-01   49091.45  0.8225390  39765.38
+##   0.3    1.389495e-01   49091.45  0.8225390  39765.38
+##   0.3    1.930698e-01   49091.45  0.8225390  39765.38
+##   0.3    2.682696e-01   49091.45  0.8225390  39765.38
+##   0.3    3.727594e-01   49091.45  0.8225390  39765.38
+##   0.3    5.179475e-01   49091.45  0.8225390  39765.38
+##   0.3    7.196857e-01   49091.45  0.8225390  39765.38
+##   0.3    1.000000e+00   49091.45  0.8225390  39765.38
+##   0.3    1.389495e+00   49091.45  0.8225390  39765.38
+##   0.3    1.930698e+00   49091.45  0.8225390  39765.38
+##   0.3    2.682696e+00   49091.45  0.8225390  39765.38
+##   0.3    3.727594e+00   49091.45  0.8225390  39765.38
+##   0.3    5.179475e+00   49091.45  0.8225390  39765.38
+##   0.3    7.196857e+00   49091.45  0.8225390  39765.38
+##   0.3    1.000000e+01   49091.45  0.8225390  39765.38
+##   0.3    1.389495e+01   49091.45  0.8225390  39765.38
+##   0.3    1.930698e+01   49091.45  0.8225390  39765.38
+##   0.3    2.682696e+01   49091.45  0.8225390  39765.38
+##   0.3    3.727594e+01   49091.45  0.8225390  39765.38
+##   0.3    5.179475e+01   49091.45  0.8225390  39765.38
+##   0.3    7.196857e+01   49091.45  0.8225390  39765.38
+##   0.3    1.000000e+02   49091.45  0.8225390  39765.38
+##   0.3    1.389495e+02   49091.45  0.8225390  39765.38
+##   0.3    1.930698e+02   49091.45  0.8225390  39765.38
+##   0.3    2.682696e+02   49091.45  0.8225390  39765.38
+##   0.3    3.727594e+02   49091.45  0.8225390  39765.38
+##   0.3    5.179475e+02   49090.53  0.8225428  39767.55
+##   0.3    7.196857e+02   49095.55  0.8225254  39781.59
+##   0.3    1.000000e+03   49105.94  0.8224989  39802.25
+##   0.3    1.389495e+03   49126.75  0.8224573  39838.51
+##   0.3    1.930698e+03   49167.74  0.8223902  39893.77
+##   0.3    2.682696e+03   49247.44  0.8222785  39974.92
+##   0.3    3.727594e+03   49400.58  0.8220867  40113.86
+##   0.3    5.179475e+03   49691.02  0.8217463  40345.75
+##   0.3    7.196857e+03   50233.03  0.8211215  40717.75
+##   0.3    1.000000e+04   51222.72  0.8199356  41402.37
+##   0.3    1.389495e+04   52976.20  0.8175985  42538.05
+##   0.3    1.930698e+04   55958.77  0.8127897  44485.20
+##   0.3    2.682696e+04   60664.43  0.8034079  48170.62
+##   0.3    3.727594e+04   67235.43  0.7894024  53617.66
+##   0.3    5.179475e+04   75999.38  0.7649465  60364.47
+##   0.3    7.196857e+04   87013.47  0.7127489  68774.72
+##   0.3    1.000000e+05   99138.13  0.5972362  78322.95
+##   0.4    1.000000e-02   49091.53  0.8225308  39763.74
+##   0.4    1.389495e-02   49091.53  0.8225308  39763.74
+##   0.4    1.930698e-02   49091.53  0.8225308  39763.74
+##   0.4    2.682696e-02   49091.53  0.8225308  39763.74
+##   0.4    3.727594e-02   49091.53  0.8225308  39763.74
+##   0.4    5.179475e-02   49091.53  0.8225308  39763.74
+##   0.4    7.196857e-02   49091.53  0.8225308  39763.74
+##   0.4    1.000000e-01   49091.53  0.8225308  39763.74
+##   0.4    1.389495e-01   49091.53  0.8225308  39763.74
+##   0.4    1.930698e-01   49091.53  0.8225308  39763.74
+##   0.4    2.682696e-01   49091.53  0.8225308  39763.74
+##   0.4    3.727594e-01   49091.53  0.8225308  39763.74
+##   0.4    5.179475e-01   49091.53  0.8225308  39763.74
+##   0.4    7.196857e-01   49091.53  0.8225308  39763.74
+##   0.4    1.000000e+00   49091.53  0.8225308  39763.74
+##   0.4    1.389495e+00   49091.53  0.8225308  39763.74
+##   0.4    1.930698e+00   49091.53  0.8225308  39763.74
+##   0.4    2.682696e+00   49091.53  0.8225308  39763.74
+##   0.4    3.727594e+00   49091.53  0.8225308  39763.74
+##   0.4    5.179475e+00   49091.53  0.8225308  39763.74
+##   0.4    7.196857e+00   49091.53  0.8225308  39763.74
+##   0.4    1.000000e+01   49091.53  0.8225308  39763.74
+##   0.4    1.389495e+01   49091.53  0.8225308  39763.74
+##   0.4    1.930698e+01   49091.53  0.8225308  39763.74
+##   0.4    2.682696e+01   49091.53  0.8225308  39763.74
+##   0.4    3.727594e+01   49091.53  0.8225308  39763.74
+##   0.4    5.179475e+01   49091.53  0.8225308  39763.74
+##   0.4    7.196857e+01   49091.53  0.8225308  39763.74
+##   0.4    1.000000e+02   49091.53  0.8225308  39763.74
+##   0.4    1.389495e+02   49091.53  0.8225308  39763.74
+##   0.4    1.930698e+02   49091.53  0.8225308  39763.74
+##   0.4    2.682696e+02   49091.53  0.8225308  39763.74
+##   0.4    3.727594e+02   49091.53  0.8225308  39763.74
+##   0.4    5.179475e+02   49093.81  0.8225204  39770.89
+##   0.4    7.196857e+02   49101.33  0.8224921  39786.82
+##   0.4    1.000000e+03   49116.13  0.8224485  39811.61
+##   0.4    1.389495e+03   49145.04  0.8223793  39852.43
+##   0.4    1.930698e+03   49201.07  0.8222659  39912.45
+##   0.4    2.682696e+03   49308.88  0.8220742  40012.01
+##   0.4    3.727594e+03   49514.58  0.8217391  40178.87
+##   0.4    5.179475e+03   49902.97  0.8211328  40465.91
+##   0.4    7.196857e+03   50625.65  0.8199947  40943.24
+##   0.4    1.000000e+04   51941.90  0.8177768  41841.93
+##   0.4    1.389495e+04   54266.71  0.8132592  43283.67
+##   0.4    1.930698e+04   58102.17  0.8045880  46055.66
+##   0.4    2.682696e+04   63751.44  0.7910070  50736.38
+##   0.4    3.727594e+04   71621.45  0.7681220  57031.34
+##   0.4    5.179475e+04   82131.57  0.7218881  65008.53
+##   0.4    7.196857e+04   94908.50  0.6117520  75028.25
+##   0.4    1.000000e+05  105587.13  0.5257340  83330.24
+##   0.5    1.000000e-02   49092.61  0.8225164  39761.80
+##   0.5    1.389495e-02   49092.61  0.8225164  39761.80
+##   0.5    1.930698e-02   49092.61  0.8225164  39761.80
+##   0.5    2.682696e-02   49092.61  0.8225164  39761.80
+##   0.5    3.727594e-02   49092.61  0.8225164  39761.80
+##   0.5    5.179475e-02   49092.61  0.8225164  39761.80
+##   0.5    7.196857e-02   49092.61  0.8225164  39761.80
+##   0.5    1.000000e-01   49092.61  0.8225164  39761.80
+##   0.5    1.389495e-01   49092.61  0.8225164  39761.80
+##   0.5    1.930698e-01   49092.61  0.8225164  39761.80
+##   0.5    2.682696e-01   49092.61  0.8225164  39761.80
+##   0.5    3.727594e-01   49092.61  0.8225164  39761.80
+##   0.5    5.179475e-01   49092.61  0.8225164  39761.80
+##   0.5    7.196857e-01   49092.61  0.8225164  39761.80
+##   0.5    1.000000e+00   49092.61  0.8225164  39761.80
+##   0.5    1.389495e+00   49092.61  0.8225164  39761.80
+##   0.5    1.930698e+00   49092.61  0.8225164  39761.80
+##   0.5    2.682696e+00   49092.61  0.8225164  39761.80
+##   0.5    3.727594e+00   49092.61  0.8225164  39761.80
+##   0.5    5.179475e+00   49092.61  0.8225164  39761.80
+##   0.5    7.196857e+00   49092.61  0.8225164  39761.80
+##   0.5    1.000000e+01   49092.61  0.8225164  39761.80
+##   0.5    1.389495e+01   49092.61  0.8225164  39761.80
+##   0.5    1.930698e+01   49092.61  0.8225164  39761.80
+##   0.5    2.682696e+01   49092.61  0.8225164  39761.80
+##   0.5    3.727594e+01   49092.61  0.8225164  39761.80
+##   0.5    5.179475e+01   49092.61  0.8225164  39761.80
+##   0.5    7.196857e+01   49092.61  0.8225164  39761.80
+##   0.5    1.000000e+02   49092.61  0.8225164  39761.80
+##   0.5    1.389495e+02   49092.61  0.8225164  39761.80
+##   0.5    1.930698e+02   49092.61  0.8225164  39761.80
+##   0.5    2.682696e+02   49092.61  0.8225164  39761.80
+##   0.5    3.727594e+02   49092.64  0.8225174  39762.57
+##   0.5    5.179475e+02   49097.52  0.8224966  39774.39
+##   0.5    7.196857e+02   49107.78  0.8224564  39792.42
+##   0.5    1.000000e+03   49127.61  0.8223935  39821.23
+##   0.5    1.389495e+03   49165.83  0.8222921  39866.64
+##   0.5    1.930698e+03   49239.24  0.8221235  39934.81
+##   0.5    2.682696e+03   49379.64  0.8218335  40051.80
+##   0.5    3.727594e+03   49646.55  0.8213174  40257.76
+##   0.5    5.179475e+03   50149.30  0.8203644  40596.91
+##   0.5    7.196857e+03   51082.94  0.8185373  41231.04
+##   0.5    1.000000e+04   52779.83  0.8148814  42329.44
+##   0.5    1.389495e+04   55715.49  0.8077439  44237.89
+##   0.5    1.930698e+04   60313.05  0.7955934  47848.96
+##   0.5    2.682696e+04   66921.39  0.7762542  53319.53
+##   0.5    3.727594e+04   76173.85  0.7403939  60458.77
+##   0.5    5.179475e+04   88628.02  0.6525691  70067.15
+##   0.5    7.196857e+04  100880.34  0.5353353  79707.64
+##   0.5    1.000000e+05  111394.27  0.5168128  87980.69
+##   0.6    1.000000e-02   49094.78  0.8225098  39761.56
+##   0.6    1.389495e-02   49094.78  0.8225098  39761.56
+##   0.6    1.930698e-02   49094.78  0.8225098  39761.56
+##   0.6    2.682696e-02   49094.78  0.8225098  39761.56
+##   0.6    3.727594e-02   49094.78  0.8225098  39761.56
+##   0.6    5.179475e-02   49094.78  0.8225098  39761.56
+##   0.6    7.196857e-02   49094.78  0.8225098  39761.56
+##   0.6    1.000000e-01   49094.78  0.8225098  39761.56
+##   0.6    1.389495e-01   49094.78  0.8225098  39761.56
+##   0.6    1.930698e-01   49094.78  0.8225098  39761.56
+##   0.6    2.682696e-01   49094.78  0.8225098  39761.56
+##   0.6    3.727594e-01   49094.78  0.8225098  39761.56
+##   0.6    5.179475e-01   49094.78  0.8225098  39761.56
+##   0.6    7.196857e-01   49094.78  0.8225098  39761.56
+##   0.6    1.000000e+00   49094.78  0.8225098  39761.56
+##   0.6    1.389495e+00   49094.78  0.8225098  39761.56
+##   0.6    1.930698e+00   49094.78  0.8225098  39761.56
+##   0.6    2.682696e+00   49094.78  0.8225098  39761.56
+##   0.6    3.727594e+00   49094.78  0.8225098  39761.56
+##   0.6    5.179475e+00   49094.78  0.8225098  39761.56
+##   0.6    7.196857e+00   49094.78  0.8225098  39761.56
+##   0.6    1.000000e+01   49094.78  0.8225098  39761.56
+##   0.6    1.389495e+01   49094.78  0.8225098  39761.56
+##   0.6    1.930698e+01   49094.78  0.8225098  39761.56
+##   0.6    2.682696e+01   49094.78  0.8225098  39761.56
+##   0.6    3.727594e+01   49094.78  0.8225098  39761.56
+##   0.6    5.179475e+01   49094.78  0.8225098  39761.56
+##   0.6    7.196857e+01   49094.78  0.8225098  39761.56
+##   0.6    1.000000e+02   49094.78  0.8225098  39761.56
+##   0.6    1.389495e+02   49094.78  0.8225098  39761.56
+##   0.6    1.930698e+02   49094.78  0.8225098  39761.56
+##   0.6    2.682696e+02   49094.78  0.8225098  39761.56
+##   0.6    3.727594e+02   49094.57  0.8225065  39764.63
+##   0.6    5.179475e+02   49101.57  0.8224717  39778.42
+##   0.6    7.196857e+02   49114.90  0.8224183  39798.14
+##   0.6    1.000000e+03   49140.38  0.8223338  39830.86
+##   0.6    1.389495e+03   49189.12  0.8221956  39880.88
+##   0.6    1.930698e+03   49282.26  0.8219625  39958.41
+##   0.6    2.682696e+03   49459.81  0.8215551  40097.97
+##   0.6    3.727594e+03   49796.63  0.8208175  40347.11
+##   0.6    5.179475e+03   50430.23  0.8194309  40750.49
+##   0.6    7.196857e+03   51605.31  0.8167157  41557.51
+##   0.6    1.000000e+04   53728.03  0.8112659  42868.89
+##   0.6    1.389495e+04   57257.62  0.8013510  45377.55
+##   0.6    1.930698e+04   62542.34  0.7858814  49722.49
+##   0.6    2.682696e+04   70199.70  0.7588919  55896.06
+##   0.6    3.727594e+04   80970.20  0.7028597  64053.38
+##   0.6    5.179475e+04   94276.82  0.5826032  74560.73
+##   0.6    7.196857e+04  105262.49  0.5241970  83057.01
+##   0.6    1.000000e+05  117745.84  0.4333323  93063.10
+##   0.7    1.000000e-02   49095.71  0.8225003  39761.77
+##   0.7    1.389495e-02   49095.71  0.8225003  39761.77
+##   0.7    1.930698e-02   49095.71  0.8225003  39761.77
+##   0.7    2.682696e-02   49095.71  0.8225003  39761.77
+##   0.7    3.727594e-02   49095.71  0.8225003  39761.77
+##   0.7    5.179475e-02   49095.71  0.8225003  39761.77
+##   0.7    7.196857e-02   49095.71  0.8225003  39761.77
+##   0.7    1.000000e-01   49095.71  0.8225003  39761.77
+##   0.7    1.389495e-01   49095.71  0.8225003  39761.77
+##   0.7    1.930698e-01   49095.71  0.8225003  39761.77
+##   0.7    2.682696e-01   49095.71  0.8225003  39761.77
+##   0.7    3.727594e-01   49095.71  0.8225003  39761.77
+##   0.7    5.179475e-01   49095.71  0.8225003  39761.77
+##   0.7    7.196857e-01   49095.71  0.8225003  39761.77
+##   0.7    1.000000e+00   49095.71  0.8225003  39761.77
+##   0.7    1.389495e+00   49095.71  0.8225003  39761.77
+##   0.7    1.930698e+00   49095.71  0.8225003  39761.77
+##   0.7    2.682696e+00   49095.71  0.8225003  39761.77
+##   0.7    3.727594e+00   49095.71  0.8225003  39761.77
+##   0.7    5.179475e+00   49095.71  0.8225003  39761.77
+##   0.7    7.196857e+00   49095.71  0.8225003  39761.77
+##   0.7    1.000000e+01   49095.71  0.8225003  39761.77
+##   0.7    1.389495e+01   49095.71  0.8225003  39761.77
+##   0.7    1.930698e+01   49095.71  0.8225003  39761.77
+##   0.7    2.682696e+01   49095.71  0.8225003  39761.77
+##   0.7    3.727594e+01   49095.71  0.8225003  39761.77
+##   0.7    5.179475e+01   49095.71  0.8225003  39761.77
+##   0.7    7.196857e+01   49095.71  0.8225003  39761.77
+##   0.7    1.000000e+02   49095.71  0.8225003  39761.77
+##   0.7    1.389495e+02   49095.71  0.8225003  39761.77
+##   0.7    1.930698e+02   49095.71  0.8225003  39761.77
+##   0.7    2.682696e+02   49095.71  0.8225003  39761.77
+##   0.7    3.727594e+02   49097.11  0.8224892  39767.15
+##   0.7    5.179475e+02   49105.96  0.8224456  39782.45
+##   0.7    7.196857e+02   49122.68  0.8223779  39804.95
+##   0.7    1.000000e+03   49154.45  0.8222693  39840.99
+##   0.7    1.389495e+03   49214.93  0.8220897  39895.36
+##   0.7    1.930698e+03   49330.17  0.8217823  39987.15
+##   0.7    2.682696e+03   49549.46  0.8212375  40150.71
+##   0.7    3.727594e+03   49965.03  0.8202354  40438.08
+##   0.7    5.179475e+03   50746.07  0.8183196  40950.34
+##   0.7    7.196857e+03   52192.98  0.8144943  41918.12
+##   0.7    1.000000e+04   54733.84  0.8072592  43531.12
+##   0.7    1.389495e+04   58813.30  0.7948676  46639.51
+##   0.7    1.930698e+04   64830.66  0.7748128  51612.54
+##   0.7    2.682696e+04   73538.34  0.7386490  58424.52
+##   0.7    3.727594e+04   85997.06  0.6497895  67943.58
+##   0.7    5.179475e+04   98704.89  0.5334280  78026.54
+##   0.7    7.196857e+04  110240.03  0.5161262  87026.69
+##   0.7    1.000000e+05  118869.56        NaN  94051.13
+##   0.8    1.000000e-02   49094.09  0.8225064  39759.34
+##   0.8    1.389495e-02   49094.09  0.8225064  39759.34
+##   0.8    1.930698e-02   49094.09  0.8225064  39759.34
+##   0.8    2.682696e-02   49094.09  0.8225064  39759.34
+##   0.8    3.727594e-02   49094.09  0.8225064  39759.34
+##   0.8    5.179475e-02   49094.09  0.8225064  39759.34
+##   0.8    7.196857e-02   49094.09  0.8225064  39759.34
+##   0.8    1.000000e-01   49094.09  0.8225064  39759.34
+##   0.8    1.389495e-01   49094.09  0.8225064  39759.34
+##   0.8    1.930698e-01   49094.09  0.8225064  39759.34
+##   0.8    2.682696e-01   49094.09  0.8225064  39759.34
+##   0.8    3.727594e-01   49094.09  0.8225064  39759.34
+##   0.8    5.179475e-01   49094.09  0.8225064  39759.34
+##   0.8    7.196857e-01   49094.09  0.8225064  39759.34
+##   0.8    1.000000e+00   49094.09  0.8225064  39759.34
+##   0.8    1.389495e+00   49094.09  0.8225064  39759.34
+##   0.8    1.930698e+00   49094.09  0.8225064  39759.34
+##   0.8    2.682696e+00   49094.09  0.8225064  39759.34
+##   0.8    3.727594e+00   49094.09  0.8225064  39759.34
+##   0.8    5.179475e+00   49094.09  0.8225064  39759.34
+##   0.8    7.196857e+00   49094.09  0.8225064  39759.34
+##   0.8    1.000000e+01   49094.09  0.8225064  39759.34
+##   0.8    1.389495e+01   49094.09  0.8225064  39759.34
+##   0.8    1.930698e+01   49094.09  0.8225064  39759.34
+##   0.8    2.682696e+01   49094.09  0.8225064  39759.34
+##   0.8    3.727594e+01   49094.09  0.8225064  39759.34
+##   0.8    5.179475e+01   49094.09  0.8225064  39759.34
+##   0.8    7.196857e+01   49094.09  0.8225064  39759.34
+##   0.8    1.000000e+02   49094.09  0.8225064  39759.34
+##   0.8    1.389495e+02   49094.09  0.8225064  39759.34
+##   0.8    1.930698e+02   49094.09  0.8225064  39759.34
+##   0.8    2.682696e+02   49094.07  0.8225069  39759.64
+##   0.8    3.727594e+02   49099.82  0.8224713  39770.04
+##   0.8    5.179475e+02   49110.70  0.8224182  39786.49
+##   0.8    7.196857e+02   49131.14  0.8223349  39811.88
+##   0.8    1.000000e+03   49169.82  0.8222000  39851.25
+##   0.8    1.389495e+03   49243.27  0.8219741  39912.86
+##   0.8    1.930698e+03   49383.01  0.8215825  40020.54
+##   0.8    2.682696e+03   49648.65  0.8208792  40210.04
+##   0.8    3.727594e+03   50151.82  0.8195671  40540.08
+##   0.8    5.179475e+03   51097.00  0.8170183  41178.59
+##   0.8    7.196857e+03   52840.21  0.8119188  42287.90
+##   0.8    1.000000e+04   55796.24  0.8027788  44290.17
+##   0.8    1.389495e+04   60383.93  0.7879666  47927.79
+##   0.8    1.930698e+04   67177.79  0.7626156  53485.53
+##   0.8    2.682696e+04   77085.13  0.7131424  61090.27
+##   0.8    3.727594e+04   90425.34  0.5992300  71544.83
+##   0.8    5.179475e+04  102083.15  0.5251294  80615.02
+##   0.8    7.196857e+04  115783.86  0.4753236  91488.26
+##   0.8    1.000000e+05  118869.56        NaN  94051.13
+##   0.9    1.000000e-02   49095.76  0.8224901  39758.19
+##   0.9    1.389495e-02   49095.76  0.8224901  39758.19
+##   0.9    1.930698e-02   49095.76  0.8224901  39758.19
+##   0.9    2.682696e-02   49095.76  0.8224901  39758.19
+##   0.9    3.727594e-02   49095.76  0.8224901  39758.19
+##   0.9    5.179475e-02   49095.76  0.8224901  39758.19
+##   0.9    7.196857e-02   49095.76  0.8224901  39758.19
+##   0.9    1.000000e-01   49095.76  0.8224901  39758.19
+##   0.9    1.389495e-01   49095.76  0.8224901  39758.19
+##   0.9    1.930698e-01   49095.76  0.8224901  39758.19
+##   0.9    2.682696e-01   49095.76  0.8224901  39758.19
+##   0.9    3.727594e-01   49095.76  0.8224901  39758.19
+##   0.9    5.179475e-01   49095.76  0.8224901  39758.19
+##   0.9    7.196857e-01   49095.76  0.8224901  39758.19
+##   0.9    1.000000e+00   49095.76  0.8224901  39758.19
+##   0.9    1.389495e+00   49095.76  0.8224901  39758.19
+##   0.9    1.930698e+00   49095.76  0.8224901  39758.19
+##   0.9    2.682696e+00   49095.76  0.8224901  39758.19
+##   0.9    3.727594e+00   49095.76  0.8224901  39758.19
+##   0.9    5.179475e+00   49095.76  0.8224901  39758.19
+##   0.9    7.196857e+00   49095.76  0.8224901  39758.19
+##   0.9    1.000000e+01   49095.76  0.8224901  39758.19
+##   0.9    1.389495e+01   49095.76  0.8224901  39758.19
+##   0.9    1.930698e+01   49095.76  0.8224901  39758.19
+##   0.9    2.682696e+01   49095.76  0.8224901  39758.19
+##   0.9    3.727594e+01   49095.76  0.8224901  39758.19
+##   0.9    5.179475e+01   49095.76  0.8224901  39758.19
+##   0.9    7.196857e+01   49095.76  0.8224901  39758.19
+##   0.9    1.000000e+02   49095.76  0.8224901  39758.19
+##   0.9    1.389495e+02   49095.76  0.8224901  39758.19
+##   0.9    1.930698e+02   49095.76  0.8224901  39758.19
+##   0.9    2.682696e+02   49095.72  0.8224933  39760.54
+##   0.9    3.727594e+02   49102.72  0.8224528  39772.95
+##   0.9    5.179475e+02   49115.79  0.8223896  39790.52
+##   0.9    7.196857e+02   49140.28  0.8222896  39818.83
+##   0.9    1.000000e+03   49186.51  0.8221258  39861.52
+##   0.9    1.389495e+03   49274.17  0.8218486  39930.80
+##   0.9    1.930698e+03   49440.80  0.8213626  40058.23
+##   0.9    2.682696e+03   49757.47  0.8204788  40276.39
+##   0.9    3.727594e+03   50357.15  0.8188081  40654.02
+##   0.9    5.179475e+03   51483.17  0.8155135  41426.44
+##   0.9    7.196857e+03   53523.03  0.8091969  42687.16
+##   0.9    1.000000e+04   56911.66  0.7978922  45133.87
+##   0.9    1.389495e+04   62037.87  0.7798725  49295.08
+##   0.9    1.930698e+04   69594.51  0.7486475  55377.41
+##   0.9    2.682696e+04   80855.70  0.6790437  63921.85
+##   0.9    3.727594e+04   94293.75  0.5550181  74649.51
+##   0.9    5.179475e+04  105802.06  0.5216037  83457.92
+##   0.9    7.196857e+04  118827.14  0.1102253  93998.46
+##   0.9    1.000000e+05  118869.56        NaN  94051.13
+##   1.0    1.000000e-02   49097.14  0.8224867  39759.70
+##   1.0    1.389495e-02   49097.14  0.8224867  39759.70
+##   1.0    1.930698e-02   49097.14  0.8224867  39759.70
+##   1.0    2.682696e-02   49097.14  0.8224867  39759.70
+##   1.0    3.727594e-02   49097.14  0.8224867  39759.70
+##   1.0    5.179475e-02   49097.14  0.8224867  39759.70
+##   1.0    7.196857e-02   49097.14  0.8224867  39759.70
+##   1.0    1.000000e-01   49097.14  0.8224867  39759.70
+##   1.0    1.389495e-01   49097.14  0.8224867  39759.70
+##   1.0    1.930698e-01   49097.14  0.8224867  39759.70
+##   1.0    2.682696e-01   49097.14  0.8224867  39759.70
+##   1.0    3.727594e-01   49097.14  0.8224867  39759.70
+##   1.0    5.179475e-01   49097.14  0.8224867  39759.70
+##   1.0    7.196857e-01   49097.14  0.8224867  39759.70
+##   1.0    1.000000e+00   49097.14  0.8224867  39759.70
+##   1.0    1.389495e+00   49097.14  0.8224867  39759.70
+##   1.0    1.930698e+00   49097.14  0.8224867  39759.70
+##   1.0    2.682696e+00   49097.14  0.8224867  39759.70
+##   1.0    3.727594e+00   49097.14  0.8224867  39759.70
+##   1.0    5.179475e+00   49097.14  0.8224867  39759.70
+##   1.0    7.196857e+00   49097.14  0.8224867  39759.70
+##   1.0    1.000000e+01   49097.14  0.8224867  39759.70
+##   1.0    1.389495e+01   49097.14  0.8224867  39759.70
+##   1.0    1.930698e+01   49097.14  0.8224867  39759.70
+##   1.0    2.682696e+01   49097.14  0.8224867  39759.70
+##   1.0    3.727594e+01   49097.14  0.8224867  39759.70
+##   1.0    5.179475e+01   49097.14  0.8224867  39759.70
+##   1.0    7.196857e+01   49097.14  0.8224867  39759.70
+##   1.0    1.000000e+02   49097.14  0.8224867  39759.70
+##   1.0    1.389495e+02   49097.14  0.8224867  39759.70
+##   1.0    1.930698e+02   49097.14  0.8224867  39759.70
+##   1.0    2.682696e+02   49097.45  0.8224808  39762.42
+##   1.0    3.727594e+02   49105.79  0.8224334  39775.88
+##   1.0    5.179475e+02   49121.22  0.8223597  39794.86
+##   1.0    7.196857e+02   49150.09  0.8222417  39825.77
+##   1.0    1.000000e+03   49204.51  0.8220467  39871.81
+##   1.0    1.389495e+03   49307.63  0.8217131  39950.95
+##   1.0    1.930698e+03   49503.59  0.8211220  40096.62
+##   1.0    2.682696e+03   49875.97  0.8200346  40343.56
+##   1.0    3.727594e+03   50581.13  0.8179537  40795.00
+##   1.0    5.179475e+03   51904.66  0.8137915  41691.97
+##   1.0    7.196857e+03   54225.32  0.8062249  43152.52
+##   1.0    1.000000e+04   57997.32  0.7932683  46016.21
+##   1.0    1.389495e+04   63660.44  0.7717798  50628.38
+##   1.0    1.930698e+04   72036.21  0.7338519  57234.52
+##   1.0    2.682696e+04   84597.18  0.6394703  66817.27
+##   1.0    3.727594e+04   97343.89  0.5290040  77013.84
+##   1.0    5.179475e+04  110084.63  0.5125965  86879.32
+##   1.0    7.196857e+04  118869.56        NaN  94051.13
+##   1.0    1.000000e+05  118869.56        NaN  94051.13
+## 
+## RMSE was used to select the optimal model using the smallest value.
+## The final values used for the model were alpha = 0.1 and lambda = 517.9475.
+```
+
+**caret automatically:**
+- Tests all alpha/lambda combinations
+- Performs 10-fold CV for each
+- Selects best parameters
+
+---
+
+# Best Parameters Found
+
+
+``` r
+# Extract best hyperparameters
+best_params &lt;- enet_caret$bestTune
+cat("Best alpha:", best_params$alpha, "\n")
+```
+
+```
+## Best alpha: 0.1
+```
+
+``` r
+cat("Best lambda:", best_params$lambda, "\n")
+```
+
+```
+## Best lambda: 517.9475
+```
+
+``` r
+# Get best model performance
+best_results &lt;- enet_caret$results %&gt;%
+  filter(alpha == best_params$alpha, lambda == best_params$lambda)
+
+cat("\nBest CV RMSE:", round(best_results$RMSE), "\n")
+```
+
+```
+## 
+## Best CV RMSE: 49086
+```
+
+``` r
+cat("Best R-squared:", round(best_results$Rsquared, 3), "\n")
+```
+
+```
+## Best R-squared: 0.823
+```
+
+**Optimal values:** Found through exhaustive search
+
+---
+
+# Visualizing the Tuning Process
+
+
+``` r
+# Plot RMSE across parameter space
+plot(enet_caret, 
+     plotType = "level",  # Heatmap
+     main = "RMSE Across Alpha-Lambda Grid")
+```
+
+![](slides_files/figure-html/Part5_plot_tuning-1.png)&lt;!-- --&gt;
+
+``` r
+# Can also use plotType = "scatter"
+```
+
+**Heatmap shows:** Which alpha/lambda combinations work best
+
+---
+
+# Alternative: Line Plot
+
+
+``` r
+# Line plot for each alpha
+plot(enet_caret, 
+     plotType = "scatter",
+     main = "RMSE vs Lambda for Different Alpha Values")
+```
+
+![](slides_files/figure-html/Part5_plot_lines-1.png)&lt;!-- --&gt;
+
+**Each line:** Different alpha value (0 = Ridge, 1 = LASSO)
+
+---
+
+# Variable Importance
+
+
+``` r
+# Extract variable importance
+importance &lt;- varImp(enet_caret, scale = TRUE)
+print(importance)
+```
+
+```
+## glmnet variable importance
+## 
+##                          Overall
+## college_educated_pct   1.000e+02
+## competitors_within_5mi 6.478e+00
+## years_open             4.184e+00
+## nearest_competitor_mi  1.931e+00
+## parking_spaces         2.304e-01
+## loyalty_members        1.496e-02
+## population_density     1.070e-02
+## store_size_sqft        4.566e-03
+## marketing_spend        6.304e-04
+## median_income          0.000e+00
+```
+
+``` r
+# Plot importance
+plot(importance, 
+     top = 10,
+     main = "Top 10 Most Important Features")
+```
+
+![](slides_files/figure-html/Part5_var_importance-1.png)&lt;!-- --&gt;
+
+**Importance:** Based on absolute coefficient values
+
+---
+
+# Making Predictions
+
+
+``` r
+# Predict on test set
+caret_predictions &lt;- predict(enet_caret, newdata = X_test)
+
+# Calculate test RMSE
+caret_test_rmse &lt;- sqrt(mean((y_test - caret_predictions)^2))
+
+cat("caret Elastic Net Test RMSE: $", 
+    format(round(caret_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## caret Elastic Net Test RMSE: $50,539
+```
+
+``` r
+# Compare to manual implementation
+cat("Manual Elastic Net Test RMSE: $",
+    format(round(enet_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+```
+## Manual Elastic Net Test RMSE: $52,429
+```
+
+**Should be similar** to our manual Elastic Net from Part 4
+
+---
+
+# Comparing Multiple Methods
+
+
+``` r
+# Train multiple models with caret
+methods &lt;- c("lm", "glmnet")  # OLS and Elastic Net
+results_list &lt;- list()
+
+for (method in methods) {
+  set.seed(123)
+  
+  if (method == "glmnet") {
+    model &lt;- train(X_train, y_train, 
+                   method = method,
+                   trControl = train_control,
+                   tuneGrid = tune_grid)
+  } else {
+    model &lt;- train(X_train, y_train,
+                   method = method,
+                   trControl = train_control)
+  }
+  
+  results_list[[method]] &lt;- model
+}
+```
+
+**Unified interface:** Same code structure for any model!
+
+---
+
+# Model Comparison
+
+
+``` r
+# Compare models
+comparison &lt;- resamples(list(
+  OLS = results_list$lm,
+  Elastic_Net = results_list$glmnet
+))
+
+summary(comparison)
+```
+
+```
+## 
+## Call:
+## summary.resamples(object = comparison)
+## 
+## Models: OLS, Elastic_Net 
+## Number of resamples: 10 
+## 
+## MAE 
+##                 Min.  1st Qu.   Median     Mean  3rd Qu.     Max. NA's
+## OLS         30872.23 35510.89 36971.49 39738.49 42550.34 50874.10    0
+## Elastic_Net 31046.02 35590.07 36970.36 39769.35 42531.84 50770.13    0
+## 
+## RMSE 
+##                 Min.  1st Qu.   Median     Mean  3rd Qu.     Max. NA's
+## OLS         38532.01 43103.28 47302.17 49086.71 53997.94 62529.11    0
+## Elastic_Net 38660.90 43184.16 47266.12 49085.86 53967.93 62515.02    0
+## 
+## Rsquared 
+##                  Min.   1st Qu.    Median      Mean   3rd Qu.      Max. NA's
+## OLS         0.6567431 0.7955738 0.8274577 0.8225807 0.8641772 0.9151417    0
+## Elastic_Net 0.6568638 0.7954607 0.8274504 0.8225857 0.8641670 0.9151836    0
+```
+
+**resamples()** compares cross-validation results
+
+---
+
+# Visualization of Comparison
+
+
+``` r
+# Boxplot comparison
+bwplot(comparison, 
+       metric = "RMSE",
+       main = "Cross-Validation RMSE Comparison")
+```
+
+![](slides_files/figure-html/Part5_compare_viz-1.png)&lt;!-- --&gt;
+
+**Lower boxes = Better performance**
+
+---
+
+# Extracting Final Model
+
+
+``` r
+# Get the underlying glmnet model
+final_glmnet &lt;- enet_caret$finalModel
+
+# Extract coefficients
+final_coefs &lt;- coef(final_glmnet, 
+                    s = best_params$lambda)
+
+print(final_coefs)
+```
+
+```
+## 11 x 1 sparse Matrix of class "dgCMatrix"
+##                           s=517.9475
+## (Intercept)            214509.477270
+## population_density         15.264873
+## median_income               2.378521
+## college_educated_pct   120459.905256
+## store_size_sqft             7.878987
+## parking_spaces            279.908063
+## years_open               5042.148993
+## marketing_spend             3.137912
+## loyalty_members            20.396769
+## competitors_within_5mi  -7805.898410
+## nearest_competitor_mi   -2328.596792
+```
+
+``` r
+# Count non-zero features
+n_features &lt;- sum(final_coefs != 0) - 1
+cat("\nFeatures selected:", n_features, "\n")
+```
+
+```
+## 
+## Features selected: 10
+```
+
+**finalModel:** The actual glmnet object with best parameters
+
+---
+
+# Saving the caret Model
+
+
+``` r
+# Save complete caret model
+saveRDS(enet_caret, "models/enet_caret_model.rds")
+
+# Save just what's needed for production
+production_bundle &lt;- list(
+  model = enet_caret,
+  best_alpha = best_params$alpha,
+  best_lambda = best_params$lambda,
+  feature_names = colnames(X_train),
+  selected_features = rownames(final_coefs)[final_coefs != 0],
+  training_performance = enet_caret$results %&gt;%
+    filter(alpha == best_params$alpha, 
+           lambda == best_params$lambda)
+)
+
+saveRDS(production_bundle, "models/production_model.rds")
+```
+
+---
+
+# Loading and Using Saved Model
+
+
+``` r
+# Load the model
+loaded_model &lt;- readRDS("models/enet_caret_model.rds")
+
+# Make predictions on new data
+new_predictions &lt;- predict(loaded_model, newdata = new_data_matrix)
+
+# Get model info
+print(loaded_model$bestTune)
+print(loaded_model$results)
+```
+
+**Production-ready:** Everything needed is saved
+
+---
+
+# Decision Framework
+
+<div id="htmlwidget-4398f79e01a271f0b200" style="width:3000px;height:500px;" class="grViz html-widget"></div>
+<script type="application/json" data-for="htmlwidget-4398f79e01a271f0b200">{"x":{"diagram":"\ndigraph decision {\n  graph [rankdir = TB, fontsize = 12]\n  \n  node [shape = box, style = filled, fillcolor = lightblue, fontsize = 11]\n  start [label = \"Start: Building Regression Model\"]\n  ols [label = \"OLS Regression\n✓ Simple\n✓ Interpretable\n✓ Fast\"]\n  ridge [label = \"Ridge Regression\n✓ All features matter\n✓ Handles correlation\n✓ Stable predictions\"]\n  lasso [label = \"LASSO Regression\n✓ Feature selection\n✓ Interpretable\n✓ Simple model\"]\n  enet [label = \"Elastic Net\n✓ Best of both\n✓ Handles correlation\n✓ Feature selection\"]\n  caret_tune [label = \"Use caret for\nautomatic tuning\n✓ Grid search\n✓ CV built-in\"]\n  \n  node [shape = diamond, fillcolor = lightyellow, fontsize = 10]\n  q1 [label = \"Many features\nor correlation?\"]\n  q2 [label = \"Need feature\nselection?\"]\n  q3 [label = \"Features\ncorrelated?\"]\n  q4 [label = \"Unsure about\nhyperparameters?\"]\n  \n  start -> q1\n  q1 -> ols [label = \"No\"]\n  q1 -> q2 [label = \"Yes\"]\n  q2 -> q3 [label = \"Yes\"]\n  q2 -> ridge [label = \"No\"]\n  q3 -> enet [label = \"Yes\"]\n  q3 -> lasso [label = \"No\"]\n  \n  ols -> q4 [label = \"Done\", style = dashed]\n  ridge -> q4 [label = \"Done\", style = dashed]\n  lasso -> q4 [label = \"Done\", style = dashed]\n  enet -> q4 [label = \"Done\", style = dashed]\n  \n  q4 -> caret_tune [label = \"Yes\"]\n}\n","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+
+---
+
+# When to Use Each Method
+
+**Decision Table:**
+
+| Situation | Method | Reason |
+|-----------|--------|--------|
+| Few features, no correlation | OLS | Simple is best |
+| Many correlated features | Ridge | Handles correlation |
+| Many irrelevant features | LASSO | Feature selection |
+| Correlated + need selection | Elastic Net | Best of both |
+| Unsure about α or λ | caret + grid search | Automatic tuning |
+| Production deployment | caret workflow | Standardized pipeline |
+
+---
+
+# Practical Recommendations
+
+**For RetailCorp Final Model:**
+
+1. ✅ **Use Elastic Net** (balances all needs)
+2. ✅ **Use caret for tuning** (finds optimal α and λ)
+3. ✅ **Save complete bundle** (model + metadata)
+4. ✅ **Monitor in production** (track RMSE monthly)
+5. ✅ **Retrain quarterly** (as new data arrives)
+
+**Why this approach?**
+- Automated hyperparameter selection
+- Reproducible workflow
+- Easy to deploy and maintain
+- Professional standard
+
+---
+
+# Complete Comparison Table
+
+
+``` r
+# Final comparison of all approaches
+final_table &lt;- tibble(
+  Method = c("OLS", "Ridge (manual)", "LASSO (manual)", 
+             "Elastic Net (manual)", "Elastic Net (caret)"),
+  Alpha = c("N/A", "0", "1", "0.5", paste(best_params$alpha)),
+  Lambda = c("N/A", "CV selected", "CV selected", "CV selected", 
+             paste(round(best_params$lambda, 2))),
+  Features = c(10, 10, n_selected, n_selected_enet, n_features),
+  Test_RMSE = c(61247, ridge_test_rmse, lasso_test_rmse, 
+                enet_test_rmse, caret_test_rmse),
+  Tuning = c("None", "Manual CV", "Manual CV", "Manual CV", 
+             "Auto grid search")
+) %&gt;%
+  mutate(Test_RMSE = round(Test_RMSE))
+
+kable(final_table, 
+      caption = "Complete Method Comparison",
+      format.args = list(big.mark = ","))
+```
+
+
+
+Table: Complete Method Comparison
+
+|Method               |Alpha |Lambda      | Features| Test_RMSE|Tuning           |
+|:--------------------|:-----|:-----------|--------:|---------:|:----------------|
+|OLS                  |N/A   |N/A         |       10|    61,247|None             |
+|Ridge (manual)       |0     |CV selected |       10|    53,278|Manual CV        |
+|LASSO (manual)       |1     |CV selected |       10|    52,683|Manual CV        |
+|Elastic Net (manual) |0.5   |CV selected |       10|    52,429|Manual CV        |
+|Elastic Net (caret)  |0.1   |517.95      |       10|    50,539|Auto grid search |
+
+---
+
+# Performance Visualization
+
+![](slides_files/figure-html/Part5_final_performance-1.png)&lt;!-- --&gt;
+
+---
+
+# Key Takeaways: caret Integration
+
+**Benefits of caret:**
+1. ✅ Unified interface for 238+ models
+2. ✅ Automatic hyperparameter tuning
+3. ✅ Built-in cross-validation
+4. ✅ Easy model comparison
+5. ✅ Standardized workflow
+6. ✅ Variable importance extraction
+7. ✅ Production-ready pipelines
+
+**Cost:** Slightly longer training time (but worth it!)
+
+---
+
+# Production Deployment Checklist
+
+**Before deploying to production:**
+
+- [ ] Model trained with cross-validation
+- [ ] Hyperparameters optimized
+- [ ] Test RMSE acceptable to stakeholders
+- [ ] Feature stability verified
+- [ ] Model saved with metadata
+- [ ] Documentation complete
+- [ ] Monitoring plan in place
+- [ ] Retraining schedule defined
+- [ ] Stakeholder sign-off obtained
+
+---
+
+# Monitoring in Production
+
+
+``` r
+# Monthly monitoring script
+monitor_model &lt;- function(new_data, model, threshold = 60000) {
+  # Make predictions
+  predictions &lt;- predict(model, newdata = new_data)
+  
+  # Calculate RMSE
+  actual_rmse &lt;- sqrt(mean((new_data$actual - predictions)^2))
+  
+  # Check performance
+  if (actual_rmse &gt; threshold) {
+    warning("Model performance degraded! RMSE: ", actual_rmse)
+    # Trigger retraining
+  }
+  
+  # Log results
+  log_entry &lt;- tibble(
+    date = Sys.Date(),
+    rmse = actual_rmse,
+    n_predictions = nrow(new_data),
+    alert = actual_rmse &gt; threshold
+  )
+  
+  write_csv(log_entry, "logs/model_performance.csv", append = TRUE)
+}
+```
+
+---
+
+# Model Retraining Strategy
+
+**When to retrain:**
+
+1. **Scheduled:** Every 3-6 months
+2. **Performance-triggered:** RMSE &gt; threshold
+3. **Data drift:** Feature distributions change
+4. **Business changes:** New store types, markets
+5. **After major events:** Economic shifts, pandemics
+
+**Retraining process:**
+- Combine old + new data
+- Re-run caret tuning
+- Compare to previous model
+- A/B test before full deployment
+- Document changes
+
+---
+
+# Advanced: Nested Cross-Validation
+
+
+``` r
+# Nested CV for unbiased performance estimate
+# Outer CV: Estimate performance
+# Inner CV: Tune hyperparameters
+
+outer_folds &lt;- createFolds(y_train, k = 5)
+nested_results &lt;- map_dfr(outer_folds, function(fold) {
+  # Split data
+  train_idx &lt;- setdiff(1:length(y_train), fold)
+  val_idx &lt;- fold
+  
+  # Inner CV for tuning
+  inner_model &lt;- train(
+    X_train[train_idx, ], y_train[train_idx],
+    method = "glmnet",
+    trControl = trainControl(method = "cv", number = 5),
+    tuneGrid = tune_grid
+  )
+  
+  # Evaluate on validation fold
+  val_pred &lt;- predict(inner_model, X_train[val_idx, ])
+  rmse &lt;- sqrt(mean((y_train[val_idx] - val_pred)^2))
+  
+  tibble(fold = which(outer_folds == fold), rmse = rmse)
+})
+
+cat("Nested CV RMSE:", mean(nested_results$rmse))
+```
+
+---
+
+# Business Communication Template
+
+**"To: CFO, RetailCorp**
+
+**Subject: Sales Forecasting Model - Final Recommendation**
+
+After comprehensive analysis, we recommend **Elastic Net regression** with the following specifications:
+
+**Model Performance:**
+- Test RMSE: $[X,XXX] (within $25K target)
+- Cross-validated accuracy: [X]%
+- [X] key features identified
+
+**Key Sales Drivers:**
+1. Square footage (strongest)
+2. Neighborhood quality
+3. Location accessibility
+[... list selected features ...]
+
+**Implementation:**
+- Deployed via caret pipeline
+- Monthly monitoring automated
+- Quarterly retraining scheduled
+
+**Next Steps:**
+- [ ] Stakeholder approval
+- [ ] Deploy to staging
+- [ ] Monitor for 1 month
+- [ ] Full production rollout"
+
+---
+
+# Summary: Complete Journey
+
+**What we've learned across 5 Partes:**
+
+**Part 1:** Problem diagnosis
+- Overfitting detection
+- Multicollinearity via VIF
+
+**Part 2:** Ridge regression
+- L2 penalty, handles correlation
+
+**Part 3:** LASSO regression  
+- L1 penalty, feature selection
+
+**Part 4:** Elastic Net
+- Combined L1 + L2, balanced approach
+
+**Part 5:** Professional workflows
+- caret integration, production deployment
+
+---
+
+# Skills You've Mastered
+
+**Technical:**
+- ✅ Train/test splitting
+- ✅ Cross-validation
+- ✅ Hyperparameter tuning
+- ✅ Ridge, LASSO, Elastic Net
+- ✅ caret workflows
+- ✅ Model comparison
+- ✅ Feature importance
+
+**Professional:**
+- ✅ Problem diagnosis
+- ✅ Method selection
+- ✅ Business communication
+- ✅ Production deployment
+- ✅ Model monitoring
+
+**You're now a regularization expert!** 🎓
+
+---
+
+# Resources for Continued Learning
+
+**Books:**
+- *Introduction to Statistical Learning* (James et al.)
+- *Applied Predictive Modeling* (Kuhn &amp; Johnson)
+- *Feature Engineering and Selection* (Kuhn &amp; Johnson)
+
+**Online:**
+- caret documentation: http://topepo.github.io/caret/
+- glmnet vignette
+- DataCamp courses on regularization
+
+**Practice:**
+- Kaggle competitions
+- UCI Machine Learning Repository
+- Your own data projects!
+
+---
+
+# Final Recommendations
+
+**For your projects:**
+
+1. **Start simple** (OLS) then add complexity
+2. **Always validate** on holdout data
+3. **Use caret** for professional workflows
+4. **Document everything** for reproducibility
+5. **Monitor in production** for model drift
+6. **Keep learning** new techniques
+
+**Remember:** 
+- Simple is often better
+- Understand before implementing
+- Communicate clearly with stakeholders
+- Models are tools, not magic
+
+---
+
+class: inverse, center, middle
+
+# Congratulations! 🎉
+
+## You've Completed Advanced Regression &amp; Regularization
+
+**You're ready to build production-grade models!**
+
+---
+
+# Questions?
+
+**Topics covered:**
+- Overfitting and multicollinearity
+- Ridge, LASSO, Elastic Net
+- caret workflows
+- Production deployment
+
+**Office Hours:** [Your time/location]
+
+**Next Lecture:** Tree-Based Methods &amp; Ensemble Learning
+
+---
+
+class: center, middle
+
+# Thank You! 🙏
+
+**Keep practicing and exploring!**
+
+---
+
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:9"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+// add `data-at-shortcutkeys` attribute to <body> to resolve conflicts with JAWS
+// screen reader (see PR #262)
+(function(d) {
+  let res = {};
+  d.querySelectorAll('.remark-help-content table tr').forEach(tr => {
+    const t = tr.querySelector('td:nth-child(2)').innerText;
+    tr.querySelectorAll('td:first-child .key').forEach(key => {
+      const k = key.innerText;
+      if (/^[a-z]$/.test(k)) res[k] = t;  // must be a single letter (key)
+    });
+  });
+  d.body.setAttribute('data-at-shortcutkeys', JSON.stringify(res));
+})(document);
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

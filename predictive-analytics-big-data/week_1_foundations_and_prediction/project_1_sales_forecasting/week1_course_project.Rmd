@@ -1,0 +1,979 @@
+---
+title: "Week 1 Course Project: Advanced Regression Analysis"
+subtitle: "Real Estate Price Prediction - Complete Analysis"
+author: "Your Name Here"
+date: "Due: End of Week 1"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+
+library(tidyverse)
+library(car)
+library(caret)
+library(glmnet)
+library(knitr)
+library(gridExtra)
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+---
+
+# Project Overview
+
+## Business Context
+
+**You are a data scientist at PremiumHomes Real Estate**, a company that operates in multiple metropolitan areas. The company wants to:
+
+1. **Predict house prices** accurately for new listings
+2. **Identify key price drivers** to advise clients
+3. **Create a production model** that updates quarterly
+4. **Provide insights** to the sales and marketing teams
+
+Your task is to build and evaluate multiple regression models, ultimately recommending the best approach for production deployment.
+
+---
+
+## Dataset Description
+
+You will work with a comprehensive real estate dataset containing:
+- **1,000 properties** across different neighborhoods
+- **20 predictor variables** (mix of numeric and categorical)
+- **1 target variable:** Sale price
+
+**Important:** This dataset includes:
+- Multicollinearity (realistic correlations)
+- Some irrelevant features (noise)
+- Missing values (you'll handle these)
+- Outliers (realistic data quality issues)
+
+---
+
+## Learning Objectives
+
+By completing this project, you will demonstrate your ability to:
+
+1. ✅ Conduct exploratory data analysis
+2. ✅ Diagnose and handle overfitting
+3. ✅ Detect and address multicollinearity
+4. ✅ Implement Ridge, LASSO, and Elastic Net
+5. ✅ Tune hyperparameters systematically
+6. ✅ Compare models rigorously
+7. ✅ Make data-driven recommendations
+8. ✅ Communicate findings effectively
+
+---
+
+## Project Requirements
+
+### Required Deliverables:
+
+1. **Complete R Markdown file** (.Rmd) with all code and analysis
+2. **Knitted HTML report** with results and visualizations
+3. **Executive summary** (1-2 pages) for non-technical stakeholders
+4. **Model files** saved for production deployment
+
+### Submission Format:
+
+- Submit as a single .zip file containing:
+  - `your_name_week1_project.Rmd`
+  - `your_name_week1_project.html`
+  - `executive_summary.pdf` (or .docx)
+  - `models/` folder with saved model objects
+
+---
+
+## Grading Rubric (100 points)
+
+| Component | Points | Description |
+|-----------|--------|-------------|
+| **Part 1: EDA** | 15 | Data exploration, visualization, insights |
+| **Part 2: Problem Diagnosis** | 15 | Overfitting, multicollinearity analysis |
+| **Part 3: Ridge Regression** | 15 | Implementation, tuning, evaluation |
+| **Part 4: LASSO Regression** | 15 | Implementation, feature selection |
+| **Part 5: Elastic Net** | 15 | Implementation, alpha tuning |
+| **Part 6: Model Comparison** | 10 | Systematic comparison, testing |
+| **Part 7: Recommendation** | 10 | Business-focused recommendation |
+| **Code Quality** | 5 | Clean, documented, reproducible |
+
+**Bonus:** +10 points for exceptional work (caret integration, automation, etc.)
+
+---
+
+# Generate the Dataset
+
+```{r generate_data}
+# Set seed for reproducibility
+set.seed(2024)
+
+n <- 1000  # Number of properties
+
+# Generate realistic real estate data
+real_estate <- tibble(
+  # Property ID
+  property_id = 1:n,
+  
+  # Location features
+  neighborhood_quality = sample(1:10, n, replace = TRUE, prob = c(rep(0.05, 5), rep(0.15, 5))),
+  distance_downtown_mi = rexp(n, rate = 0.2) %>% pmin(20),
+  walkability_score = rnorm(n, 65, 15) %>% pmin(100) %>% pmax(0),
+  
+  # Property characteristics
+  square_feet = rnorm(n, 2200, 600) %>% pmax(800),
+  lot_size_sqft = square_feet * runif(n, 2, 5) + rnorm(n, 0, 1000),
+  bedrooms = sample(2:6, n, replace = TRUE, prob = c(0.1, 0.3, 0.3, 0.2, 0.1)),
+  bathrooms = bedrooms * 0.75 + rnorm(n, 0, 0.3) %>% round() %>% pmax(1),
+  garage_spaces = sample(0:3, n, replace = TRUE, prob = c(0.1, 0.3, 0.4, 0.2)),
+  
+  # Age and condition
+  year_built = sample(1950:2023, n, replace = TRUE),
+  age_years = 2024 - year_built,
+  renovation_recent = rbinom(n, 1, 0.3),
+  
+  # Quality indicators
+  school_rating = rnorm(n, 7, 1.8) %>% pmin(10) %>% pmax(1),
+  crime_rate = rexp(n, 0.05) %>% pmin(100),
+  air_quality_index = rnorm(n, 50, 15) %>% pmin(150) %>% pmax(0),
+  
+  # Amenities
+  has_pool = rbinom(n, 1, 0.15),
+  has_fireplace = rbinom(n, 1, 0.4),
+  has_ac = rbinom(n, 1, 0.8),
+  
+  # Financial
+  property_tax_annual = square_feet * 2.5 + rnorm(n, 0, 500),
+  hoa_monthly = sample(c(0, 100, 200, 350, 500), n, replace = TRUE, 
+                      prob = c(0.4, 0.2, 0.2, 0.15, 0.05)),
+  
+  # Market factors
+  days_on_market = rpois(n, 30) %>% pmin(180),
+  previous_sale_price = NA  # Noise variable (missing for all)
+) %>%
+  mutate(
+    # Create price with realistic relationships
+    price = 50000 +
+      # Location
+      15000 * neighborhood_quality +
+      -3000 * distance_downtown_mi +
+      500 * walkability_score +
+      # Size
+      180 * square_feet +
+      8 * lot_size_sqft +
+      25000 * bedrooms +
+      15000 * bathrooms +
+      12000 * garage_spaces +
+      # Age/condition
+      -800 * age_years +
+      35000 * renovation_recent +
+      # Quality
+      12000 * school_rating +
+      -400 * crime_rate +
+      -200 * air_quality_index +
+      # Amenities
+      45000 * has_pool +
+      8000 * has_fireplace +
+      5000 * has_ac +
+      # Random noise
+      rnorm(n, 0, 40000)
+  ) %>%
+  mutate(
+    price = pmax(price, 100000),  # Minimum price
+    price = round(price, -3)  # Round to nearest $1000
+  )
+
+# Introduce some missing values (realistic scenario)
+real_estate$walkability_score[sample(1:n, 30)] <- NA
+real_estate$air_quality_index[sample(1:n, 25)] <- NA
+
+# Save dataset
+write_csv(real_estate, "real_estate_data.csv")
+
+cat("Dataset generated successfully!\n")
+cat("Properties:", nrow(real_estate), "\n")
+cat("Features:", ncol(real_estate) - 2, "(excluding ID and price)\n")
+cat("Missing values:", sum(is.na(real_estate)), "\n")
+```
+
+---
+
+# Part 1: Exploratory Data Analysis (15 points)
+
+## Task 1.1: Load and Inspect Data
+
+```{r task_1_1}
+# YOUR CODE HERE
+# Load the dataset
+# Inspect structure, dimensions, data types
+
+
+
+
+# Summary statistics
+
+
+# Check for missing values
+
+
+# Identify numeric vs categorical variables
+```
+
+**Questions:**
+1. How many observations and features do you have?
+2. Which variables have missing values?
+3. Which variables are categorical?
+
+---
+
+## Task 1.2: Target Variable Analysis
+
+```{r task_1_2}
+# YOUR CODE HERE
+# Analyze the distribution of price
+
+
+
+
+# Summary statistics for price
+
+
+# Visualize price distribution
+
+
+# Check for outliers
+```
+
+**Questions:**
+1. What is the median house price?
+2. Are there any extreme outliers?
+3. Is the distribution approximately normal?
+
+---
+
+## Task 1.3: Feature Correlations
+
+```{r task_1_3}
+# YOUR CODE HERE
+# Calculate correlation matrix for numeric features
+
+
+
+
+# Visualize correlations (heatmap or corrplot)
+
+
+# Identify highly correlated pairs (r > 0.7)
+
+
+# Correlation with target variable
+```
+
+**Questions:**
+1. Which features are most strongly correlated with price?
+2. Which feature pairs are highly correlated with each other?
+3. Does multicollinearity appear to be an issue?
+
+---
+
+## Task 1.4: Key Visualizations
+
+```{r task_1_4}
+# YOUR CODE HERE
+# Create at least 3 meaningful visualizations:
+# 1. Price vs square_feet (scatterplot)
+
+
+# 2. Price by neighborhood_quality (boxplot)
+
+
+# 3. Price vs age with renovation status (colored scatterplot)
+
+
+# 4. Your choice - explore relationships
+```
+
+**Questions:**
+1. What patterns do you observe?
+2. Which features appear most important?
+3. Are there any surprising relationships?
+
+---
+
+# Part 2: Problem Diagnosis (15 points)
+
+## Task 2.1: Data Preparation
+
+```{r task_2_1}
+# YOUR CODE HERE
+# Handle missing values
+
+
+
+
+# Create train/test split (80/20)
+
+
+# Prepare matrices for glmnet
+
+
+# Summary of prepared data
+```
+
+**Questions:**
+1. How did you handle missing values? Why?
+2. What are the dimensions of train and test sets?
+
+---
+
+## Task 2.2: Baseline OLS Model
+
+```{r task_2_2}
+# YOUR CODE HERE
+# Fit OLS regression with all features
+
+
+
+
+# Training performance
+
+
+# Test performance
+
+
+# Calculate overfitting percentage
+```
+
+**Questions:**
+1. What is the training RMSE?
+2. What is the test RMSE?
+3. How much overfitting is present?
+
+---
+
+## Task 2.3: Multicollinearity Diagnosis
+
+```{r task_2_3}
+# YOUR CODE HERE
+# Calculate VIF for all predictors
+
+
+
+
+# Visualize VIF values
+
+
+# Identify problematic features (VIF > 5)
+```
+
+**Questions:**
+1. Which features have high VIF?
+2. Why are these features correlated?
+3. Should you remove any features?
+
+---
+
+## Task 2.4: Coefficient Stability
+
+```{r task_2_4}
+# YOUR CODE HERE
+# Test coefficient stability across different samples
+
+
+
+
+# Compare coefficients across samples
+
+
+# Visualize instability
+```
+
+**Questions:**
+1. Which coefficients are most unstable?
+2. Is this stability acceptable for production?
+
+---
+
+# Part 3: Ridge Regression (15 points)
+
+## Task 3.1: Cross-Validation
+
+```{r task_3_1}
+# YOUR CODE HERE
+# Perform cross-validation for Ridge
+
+
+
+
+# Find optimal lambda
+
+
+# Plot CV results
+```
+
+**Questions:**
+1. What is lambda.min?
+2. What is lambda.1se?
+3. Which should you use for production?
+
+---
+
+## Task 3.2: Fit Final Ridge Model
+
+```{r task_3_2}
+# YOUR CODE HERE
+# Fit Ridge with optimal lambda
+
+
+
+
+# Extract coefficients
+
+
+# Compare to OLS coefficients
+```
+
+**Questions:**
+1. How much were coefficients shrunk?
+2. Which coefficients were affected most?
+
+---
+
+## Task 3.3: Ridge Performance
+
+```{r task_3_3}
+# YOUR CODE HERE
+# Calculate training and test RMSE
+
+
+
+
+# Compare to OLS
+
+
+# Visualize performance comparison
+```
+
+**Questions:**
+1. Did Ridge reduce overfitting?
+2. How much did test RMSE improve?
+3. Is Ridge better than OLS?
+
+---
+
+## Task 3.4: Coefficient Path
+
+```{r task_3_4}
+# YOUR CODE HERE
+# Plot Ridge coefficient path
+
+
+
+
+# Mark optimal lambda
+```
+
+**Questions:**
+1. Which features remain important at high lambda?
+2. How do coefficients behave as lambda increases?
+
+---
+
+# Part 4: LASSO Regression (15 points)
+
+## Task 4.1: LASSO Cross-Validation
+
+```{r task_4_1}
+# YOUR CODE HERE
+# Perform CV for LASSO
+
+
+
+
+# Find optimal lambda
+
+
+# Plot CV results with feature count
+```
+
+**Questions:**
+1. What is the optimal lambda?
+2. How many features are selected?
+
+---
+
+## Task 4.2: Feature Selection
+
+```{r task_4_2}
+# YOUR CODE HERE
+# Fit final LASSO model
+
+
+
+
+# Identify selected features
+
+
+# List dropped features
+```
+
+**Questions:**
+1. Which features did LASSO select?
+2. Which features were dropped?
+3. Does this make business sense?
+
+---
+
+## Task 4.3: LASSO Performance
+
+```{r task_4_3}
+# YOUR CODE HERE
+# Calculate performance metrics
+
+
+
+
+# Compare to Ridge and OLS
+
+
+# Create comparison table
+```
+
+**Questions:**
+1. How does LASSO compare to Ridge?
+2. Is the simpler model worth any performance loss?
+
+---
+
+## Task 4.4: Feature Importance
+
+```{r task_4_4}
+# YOUR CODE HERE
+# Rank features by importance
+
+
+
+
+# Visualize importance
+
+
+# Identify top 5 drivers
+```
+
+**Questions:**
+1. What are the top 5 price drivers?
+2. How would you communicate this to stakeholders?
+
+---
+
+# Part 5: Elastic Net (15 points)
+
+## Task 5.1: Tune Alpha
+
+```{r task_5_1}
+# YOUR CODE HERE
+# Test multiple alpha values
+
+
+
+
+# Find optimal alpha
+
+
+# Plot performance vs alpha
+```
+
+**Questions:**
+1. What is the optimal alpha?
+2. Is it closer to Ridge or LASSO?
+3. Why might this alpha be optimal?
+
+---
+
+## Task 5.2: Final Elastic Net Model
+
+```{r task_5_2}
+# YOUR CODE HERE
+# Fit Elastic Net with optimal alpha
+
+
+
+
+# Extract coefficients
+
+
+# Count selected features
+```
+
+**Questions:**
+1. How many features did Elastic Net select?
+2. Are they the same as LASSO?
+
+---
+
+## Task 5.3: Stability Analysis
+
+```{r task_5_3}
+# YOUR CODE HERE
+# Test Elastic Net stability
+
+
+
+
+# Compare to LASSO stability
+
+
+# Visualize
+```
+
+**Questions:**
+1. Is Elastic Net more stable than LASSO?
+2. Which features are consistently selected?
+
+---
+
+## Task 5.4: Performance Evaluation
+
+```{r task_5_4}
+# YOUR CODE HERE
+# Calculate all performance metrics
+
+
+
+
+# Create comprehensive comparison
+```
+
+**Questions:**
+1. How does Elastic Net rank overall?
+2. Is it worth the added complexity?
+
+---
+
+# Part 6: Model Comparison (10 points)
+
+## Task 6.1: Comprehensive Comparison
+
+```{r task_6_1}
+# YOUR CODE HERE
+# Create detailed comparison table
+
+
+
+
+# Include:
+# - Method name
+# - Hyperparameters
+# - Features selected
+# - Training RMSE
+# - Test RMSE
+# - R-squared
+# - Interpretability score
+```
+
+**Questions:**
+1. Which model performs best on test data?
+2. Which model is most interpretable?
+3. What trade-offs exist?
+
+---
+
+## Task 6.2: Visualization
+
+```{r task_6_2}
+# YOUR CODE HERE
+# Create comprehensive comparison visualizations
+# 1. RMSE comparison (bar chart)
+
+
+# 2. Feature selection comparison (venn diagram or table)
+
+
+# 3. Prediction accuracy (actual vs predicted scatter)
+
+
+# 4. Your choice
+```
+
+**Questions:**
+1. Which visualization is most informative?
+2. What story do the visualizations tell?
+
+---
+
+## Task 6.3: Statistical Testing
+
+```{r task_6_3}
+# YOUR CODE HERE
+# Perform statistical tests if appropriate
+
+
+
+
+# Are performance differences significant?
+```
+
+**Questions:**
+1. Are the differences statistically significant?
+2. Or are they within noise?
+
+---
+
+# Part 7: Business Recommendation (10 points)
+
+## Task 7.1: Model Selection
+
+```{r task_7_1}
+# YOUR CODE HERE
+# Save your recommended model
+
+
+
+
+# Document hyperparameters
+
+
+# Save feature importance
+```
+
+**Your Recommendation:**
+
+Write your recommendation here (3-5 paragraphs):
+
+```
+RECOMMENDED MODEL: [Your choice]
+
+RATIONALE:
+1. Performance: [Explain test RMSE, comparison to alternatives]
+
+2. Interpretability: [Discuss feature selection, stakeholder communication]
+
+3. Stability: [Discuss coefficient stability, production reliability]
+
+4. Business Value: [Explain practical benefits to PremiumHomes]
+
+5. Implementation: [Discuss deployment considerations]
+
+KEY FEATURES IDENTIFIED:
+- [Feature 1]: [Impact on price]
+- [Feature 2]: [Impact on price]
+- [Feature 3]: [Impact on price]
+...
+
+EXPECTED ACCURACY:
+- Average prediction error: $X,XXX
+- Confidence interval: $X,XXX to $X,XXX
+
+RECOMMENDATIONS FOR USE:
+- [How to use model]
+- [What to watch out for]
+- [When to retrain]
+```
+
+---
+
+## Task 7.2: Stakeholder Communication
+
+Create visualizations and talking points for three audiences:
+
+### For Executives:
+
+```{r task_7_2_exec}
+# YOUR CODE HERE
+# Create 1-2 executive-level visualizations
+
+
+
+
+# Key metrics dashboard
+```
+
+**Executive Summary (3 bullet points):**
+- 
+- 
+- 
+
+---
+
+### For Sales Team:
+
+```{r task_7_2_sales}
+# YOUR CODE HERE
+# Create practical guidance for pricing
+
+
+
+
+# Feature importance for sales
+```
+
+**Sales Team Guidance:**
+- 
+- 
+- 
+
+---
+
+### For Technical Team:
+
+```{r task_7_2_tech}
+# YOUR CODE HERE
+# Technical specifications
+
+
+
+
+# Deployment requirements
+```
+
+**Technical Documentation:**
+- Model: 
+- Hyperparameters: 
+- Dependencies: 
+- Retraining schedule: 
+
+---
+
+# Bonus Challenges (Optional, +10 points)
+
+## Bonus 1: caret Integration
+
+```{r bonus_1, eval=FALSE}
+# YOUR CODE HERE
+# Implement using caret package
+
+
+
+
+# Automated hyperparameter tuning
+
+
+# Model comparison using resamples
+```
+
+**Benefit of caret approach:**
+
+---
+
+## Bonus 2: Advanced Diagnostics
+
+```{r bonus_2, eval=FALSE}
+# YOUR CODE HERE
+# Residual analysis
+
+
+
+
+# Influential points
+
+
+# Model assumptions
+```
+
+**Key findings:**
+
+---
+
+## Bonus 3: Automated Pipeline
+
+```{r bonus_3, eval=FALSE}
+# YOUR CODE HERE
+# Create automated model selection function
+
+
+
+
+# Production deployment script
+```
+
+**Documentation:**
+
+---
+
+# Final Checklist
+
+Before submission, verify:
+
+- [ ] All code chunks run without errors
+- [ ] All questions are answered
+- [ ] Visualizations are clear and labeled
+- [ ] Business recommendation is complete
+- [ ] Code is well-commented
+- [ ] Document knits to HTML successfully
+- [ ] Executive summary created
+- [ ] Model files saved
+- [ ] All files zipped together
+
+---
+
+# Submission
+
+**Submit to:** [Course Platform]
+
+**Deadline:** End of Week 1
+
+**File name format:** `LastName_FirstName_Week1_Project.zip`
+
+**Zip contents:**
+1. `LastName_FirstName_Week1_Project.Rmd`
+2. `LastName_FirstName_Week1_Project.html`
+3. `executive_summary.pdf` (or .docx)
+4. `models/` folder with saved models
+5. `real_estate_data.csv` (the generated dataset)
+
+---
+
+# Evaluation Criteria
+
+Your project will be evaluated on:
+
+1. **Technical Correctness** (40%)
+   - Proper implementation of methods
+   - Correct use of validation techniques
+   - Appropriate hyperparameter tuning
+
+2. **Analysis Quality** (30%)
+   - Depth of exploration
+   - Quality of visualizations
+   - Insightful interpretations
+
+3. **Communication** (20%)
+   - Clear explanations
+   - Professional presentation
+   - Effective stakeholder communication
+
+4. **Code Quality** (10%)
+   - Clean, readable code
+   - Good documentation
+   - Reproducibility
+
+---
+
+# Tips for Success
+
+1. **Start early** - This is a comprehensive project
+2. **Be systematic** - Follow the parts in order
+3. **Document everything** - Future you will thank present you
+4. **Think like a data scientist** - Not just running code, but understanding why
+5. **Communicate clearly** - Technical skills + communication = success
+6. **Ask questions** - Use office hours if stuck
+7. **Be creative** - Show your unique insights in bonus sections
+
+---
+
+**Good luck! 🚀**
+
+**Remember:** This project demonstrates real-world data science skills. Take pride in your work!

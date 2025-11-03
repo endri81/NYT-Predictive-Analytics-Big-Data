@@ -1,0 +1,470 @@
+---
+title: "Classwork 3: Regularization Practice"
+subtitle: "Overfitting Diagnosis, Ridge & LASSO Regression"
+author: "Your Name Here"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
+    highlight: tango
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+
+library(tidyverse)
+library(car)
+library(caret)
+library(glmnet)
+library(knitr)
+
+theme_set(theme_minimal(base_size = 14))
+```
+
+---
+
+# Introduction
+
+**Scenario:** You work as a data scientist for **HomeSmart Realty**, a real estate company that wants to predict housing prices. You have data on 500 houses with 12 features including:
+
+- Square footage
+- Number of bedrooms/bathrooms
+- Lot size
+- Age of house
+- Neighborhood characteristics
+- School district quality
+- Distance to amenities
+
+Your goal is to build the best prediction model using regularization techniques.
+
+---
+
+# Load the Data
+
+```{r load_data}
+# Load housing data
+set.seed(42)
+
+# Generate synthetic housing data
+n <- 500
+
+housing_data <- tibble(
+  house_id = 1:n,
+  square_feet = rnorm(n, 2000, 500),
+  bedrooms = sample(2:6, n, replace = TRUE),
+  bathrooms = sample(1:4, n, replace = TRUE),
+  lot_size = rnorm(n, 8000, 2000),
+  age_years = sample(1:50, n, replace = TRUE),
+  garage_spaces = sample(0:3, n, replace = TRUE),
+  school_rating = rnorm(n, 7, 1.5),
+  crime_index = rnorm(n, 50, 15),
+  distance_downtown = rnorm(n, 5, 2),
+  nearby_parks = sample(0:5, n, replace = TRUE),
+  hoa_fees = rnorm(n, 200, 100),
+  property_tax = rnorm(n, 3000, 800)
+) %>%
+  mutate(
+    # Create price with some correlations
+    price = 100000 + 
+      150 * square_feet + 
+      20000 * bedrooms +
+      15000 * bathrooms +
+      10 * lot_size +
+      -2000 * age_years +
+      10000 * garage_spaces +
+      8000 * school_rating +
+      -500 * crime_index +
+      -3000 * distance_downtown +
+      5000 * nearby_parks +
+      rnorm(n, 0, 30000)  # Add noise
+  ) %>%
+  mutate(price = pmax(price, 50000))  # Minimum price
+
+# Show first few rows
+head(housing_data)
+```
+
+---
+
+# Part 1: Overfitting Diagnosis (Exercises 1-4)
+
+## Exercise 1: Train/Test Split
+
+**Task:** Split the data into 80% training and 20% test sets.
+
+```{r ex1}
+# YOUR CODE HERE
+# Hint: Use createDataPartition() from caret package
+
+
+
+
+# Check the split
+cat("Training set size:", "___", "\n")
+cat("Test set size:", "___", "\n")
+```
+
+**Expected output:** Training: 400, Test: 100
+
+---
+
+## Exercise 2: Build Full OLS Model
+
+**Task:** Build a linear regression model using ALL predictors (except house_id) to predict price.
+
+```{r ex2}
+# YOUR CODE HERE
+# Hint: Use lm() with all predictors
+
+
+
+
+# View model summary
+```
+
+**Question:** How many predictors are in your model?
+
+---
+
+## Exercise 3: Calculate Train and Test RMSE
+
+**Task:** Calculate RMSE for both training and test sets. Is there overfitting?
+
+```{r ex3}
+# YOUR CODE HERE
+# Calculate predictions and RMSE for both sets
+
+
+
+
+cat("Training RMSE: $", "___", "\n")
+cat("Test RMSE: $", "___", "\n")
+cat("Degradation: ", "___", "%\n")
+```
+
+**Question:** Is the model overfitting? How can you tell?
+
+---
+
+## Exercise 4: Check for Multicollinearity
+
+**Task:** Calculate VIF for all predictors. Which variables have high VIF (>5)?
+
+```{r ex4}
+# YOUR CODE HERE
+# Hint: Use vif() function from car package
+
+
+
+
+# Create a bar plot of VIF values
+```
+
+**Question:** Which 2-3 variables have the highest VIF? Why might they be correlated?
+
+---
+
+# Part 2: Ridge Regression (Exercises 5-8)
+
+## Exercise 5: Prepare Data Matrices
+
+**Task:** Convert the training and test data into matrix format required by glmnet.
+
+```{r ex5}
+# YOUR CODE HERE
+# Create X_train, y_train, X_test, y_test
+# Hint: Use model.matrix() and exclude house_id
+
+
+
+
+# Check dimensions
+cat("X_train dimensions:", "___", "\n")
+cat("X_test dimensions:", "___", "\n")
+```
+
+---
+
+## Exercise 6: Fit Ridge with Cross-Validation
+
+**Task:** Use cv.glmnet() to find the optimal lambda for Ridge regression.
+
+```{r ex6}
+# YOUR CODE HERE
+set.seed(123)
+# Hint: alpha = 0 for Ridge
+
+
+
+
+# Print optimal lambda values
+cat("Lambda min:", "___", "\n")
+cat("Lambda 1se:", "___", "\n")
+
+# Plot the cross-validation results
+```
+
+---
+
+## Exercise 7: Fit Final Ridge Model
+
+**Task:** Fit the final Ridge model using lambda.1se and examine coefficients.
+
+```{r ex7}
+# YOUR CODE HERE
+# Fit final model with lambda.1se
+
+
+
+
+# Print coefficients
+
+
+# Compare to OLS coefficients (optional visualization)
+```
+
+**Question:** How do Ridge coefficients compare to OLS coefficients?
+
+---
+
+## Exercise 8: Evaluate Ridge Performance
+
+**Task:** Calculate training and test RMSE for Ridge. Did it improve over OLS?
+
+```{r ex8}
+# YOUR CODE HERE
+# Get predictions and calculate RMSE
+
+
+
+
+cat("OLS Train RMSE: $", "___", "\n")
+cat("Ridge Train RMSE: $", "___", "\n")
+cat("\n")
+cat("OLS Test RMSE: $", "___", "\n")
+cat("Ridge Test RMSE: $", "___", "\n")
+cat("\n")
+cat("Test improvement: $", "___", "\n")
+```
+
+**Question:** Did Ridge reduce overfitting? How can you tell?
+
+---
+
+# Part 3: LASSO Regression (Exercises 9-12)
+
+## Exercise 9: Fit LASSO with Cross-Validation
+
+**Task:** Use cv.glmnet() to find the optimal lambda for LASSO regression.
+
+```{r ex9}
+# YOUR CODE HERE
+set.seed(123)
+# Hint: alpha = 1 for LASSO
+
+
+
+
+# Print optimal lambda values
+cat("Lambda min:", "___", "\n")
+cat("Lambda 1se:", "___", "\n")
+
+# Plot the cross-validation results
+# Notice the top axis shows number of features!
+```
+
+**Question:** How many features does LASSO select at lambda.1se?
+
+---
+
+## Exercise 10: Identify Selected Features
+
+**Task:** Fit final LASSO model and identify which features were selected (non-zero coefficients).
+
+```{r ex10}
+# YOUR CODE HERE
+# Fit final LASSO model with lambda.1se
+
+
+
+
+# Extract and display selected features
+
+
+# Count selected features
+```
+
+**Question:** Which features did LASSO drop? Does this make business sense?
+
+---
+
+## Exercise 11: Visualize Feature Selection
+
+**Task:** Create a visualization comparing which features Ridge kept vs LASSO selected.
+
+```{r ex11}
+# YOUR CODE HERE
+# Compare Ridge and LASSO coefficients side-by-side
+
+
+
+
+# Create a comparison plot
+```
+
+**Question:** Which features are most important according to LASSO?
+
+---
+
+## Exercise 12: Final Model Comparison
+
+**Task:** Create a comprehensive comparison table of all three methods (OLS, Ridge, LASSO).
+
+```{r ex12}
+# YOUR CODE HERE
+# Calculate performance metrics for all models
+
+
+
+
+# Create comparison table
+comparison_table <- tibble(
+  Method = c("OLS", "Ridge", "LASSO"),
+  Features = c("___", "___", "___"),
+  Train_RMSE = c("___", "___", "___"),
+  Test_RMSE = c("___", "___", "___"),
+  Overfitting = c("___", "___", "___")
+)
+
+kable(comparison_table, caption = "Model Performance Comparison")
+
+# Visualize the comparison
+```
+
+**Question:** Which model would you recommend to HomeSmart Realty? Why?
+
+---
+
+# Bonus Challenges (Optional)
+
+## Bonus 1: Coefficient Stability
+
+**Task:** Test the stability of LASSO feature selection by fitting it on 5 different random samples of the training data.
+
+```{r bonus1, eval=FALSE}
+# YOUR CODE HERE
+# Use bootstrapping or random sampling
+
+
+
+
+# Which features are selected consistently?
+```
+
+---
+
+## Bonus 2: Ridge vs LASSO Paths
+
+**Task:** Plot the coefficient paths for both Ridge and LASSO to see how coefficients change with lambda.
+
+```{r bonus2, eval=FALSE}
+# YOUR CODE HERE
+# Fit models across many lambda values
+# Use plot() function
+
+
+
+
+```
+
+---
+
+## Bonus 3: Business Recommendation
+
+**Task:** Write a 1-paragraph recommendation to HomeSmart Realty explaining:
+- Which model to use
+- Why it's better than alternatives
+- What the key price drivers are
+- How confident you are in the predictions
+
+```{r bonus3, eval=FALSE}
+# Write your recommendation here as a comment or text
+
+```
+
+---
+
+# Summary and Reflection
+
+**Key Takeaways:**
+
+1. **Overfitting Diagnosis:**
+   - VIF detects multicollinearity
+   - Train/test gap reveals overfitting
+   - More predictors ≠ better predictions
+
+2. **Ridge Regression:**
+   - Shrinks all coefficients
+   - Reduces overfitting
+   - Keeps all features
+   - Better test performance
+
+3. **LASSO Regression:**
+   - Performs feature selection
+   - Sets some coefficients to zero
+   - More interpretable
+   - Similar performance to Ridge
+
+4. **Practical Considerations:**
+   - Always use cross-validation for λ
+   - Prefer lambda.1se for stability
+   - Consider business context
+   - Simpler models often better
+
+---
+
+# Self-Check Questions
+
+1. When should you use Ridge vs LASSO?
+2. Why does LASSO set coefficients exactly to zero but Ridge doesn't?
+3. What does lambda control in regularization?
+4. How do you know if a model is overfitting?
+5. Why use lambda.1se instead of lambda.min?
+
+---
+
+# Additional Resources
+
+- **glmnet vignette:** https://glmnet.stanford.edu/articles/glmnet.html
+- **Ridge vs LASSO comparison:** Statistical Learning with Applications in R
+- **Cross-validation guide:** Elements of Statistical Learning
+
+---
+
+# Submission Instructions
+
+**To submit your work:**
+
+1. Complete all 12 exercises
+2. Answer all questions in comments
+3. Run all code chunks to verify they work
+4. Knit this document to HTML
+5. Submit the HTML file to Canvas
+
+**Grading Criteria:**
+- Code runs without errors (40%)
+- Correct answers to exercises (40%)
+- Quality of explanations (20%)
+
+---
+
+**Good luck! 🚀**

@@ -1,0 +1,3381 @@
+---
+title: "Advanced Regression & Regularization"
+subtitle: "Lecture 3: When Simple Regression Fails"
+author: "Predictive Analytics and Big Data"
+date: "Week 1, Day 3"
+output:
+  xaringan::moon_reader:
+    css: ["default", "default-fonts"]
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: "16:9"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 5.5,
+  dpi = 300
+)
+
+library(tidyverse)
+library(car)
+library(caret)
+library(glmnet)
+library(knitr)
+theme_set(theme_minimal(base_size = 16))
+
+# Load pre-generated data
+sales_data <- read_csv("data/sales_data.csv")
+```
+
+class: inverse, center, middle
+
+# Part 1: When Simple Regression Fails
+
+## Understanding Overfitting and Multicollinearity
+
+---
+
+# Today's Big Question
+
+.pull-left[
+**Your Role:**
+- Lead Data Scientist at RetailCorp
+- Forecasting sales for 500 stores
+- CFO needs accurate predictions
+
+**The Problem:**
+- Your model works great on training data
+- But fails when deployed to new stores
+- What went wrong?
+]
+
+.pull-right[
+**What We'll Learn:**
+
+1. Why models overfit
+2. How to diagnose multicollinearity  
+3. When you need regularization
+4. How to communicate problems to stakeholders
+
+**Outcome:** You'll know when NOT to trust a model
+]
+
+---
+
+# The Business Scenario
+
+**RetailCorp Sales Forecasting Challenge**
+
+- **500 stores** across different markets
+- **Monthly sales** ranging from $50K to $1.5M
+- **Goal:** Predict within $25,000 for inventory planning
+
+**Current baseline:**
+- If we just guess the average for every store
+- Error would be ~$150,000
+- We need to do **6x better**!
+
+**CFO's Question:** "Can your model achieve the $25K target?"
+
+---
+
+# Quick Look at Our Data
+
+```{r Part1_glimpse_data}
+glimpse(sales_data)
+```
+
+**What we have:**
+- 500 stores (observations)
+- 10 predictor variables
+- 1 target variable (monthly_sales)
+
+---
+
+# The Variables We Can Use
+
+```{r Part1_variable_summary}
+summary(sales_data %>% select(monthly_sales, population_density, 
+                               median_income, store_size_sqft))
+```
+
+**Key features:**
+- **Demographics:** population_density, median_income, college_educated_pct
+- **Store characteristics:** store_size_sqft, parking_spaces, years_open
+- **Marketing:** marketing_spend, loyalty_members
+- **Competition:** competitors_within_5mi, nearest_competitor_mi
+
+All measurable. All available before we need predictions.
+
+---
+
+# Step 1: Create Train/Test Split
+
+```{r Part1_train_test_split}
+set.seed(123)
+
+# 80% for training, 20% for testing
+train_indices <- createDataPartition(
+  sales_data$monthly_sales, 
+  p = 0.8, 
+  list = FALSE
+)
+
+train_data <- sales_data[train_indices, ]
+test_data <- sales_data[-train_indices, ]
+
+cat("Training:", nrow(train_data), "stores\n")
+cat("Testing:", nrow(test_data), "stores")
+```
+
+**Why split?**
+- Train on 400 stores
+- Test on 100 "new" stores
+- Simulates real deployment
+
+---
+
+# Step 2: Build Our Model
+
+```{r Part1_build_model}
+model_full <- lm(
+  monthly_sales ~ population_density + median_income + 
+    college_educated_pct + store_size_sqft + parking_spaces + 
+    years_open + marketing_spend + loyalty_members + 
+    competitors_within_5mi + nearest_competitor_mi,
+  data = train_data
+)
+```
+
+Simple multiple regression with all 10 predictors.
+
+Let's see how it performs...
+
+---
+
+# Training Performance Looks Good!
+
+```{r Part1_training_performance}
+train_pred <- predict(model_full, newdata = train_data)
+train_rmse <- sqrt(mean((train_data$monthly_sales - train_pred)^2))
+
+cat("Training RMSE: $", format(round(train_rmse), big.mark = ","), "\n", sep = "")
+cat("Target RMSE:    $25,000\n")
+cat("Training R²:   ", round(summary(model_full)$r.squared, 3))
+```
+
+**Initial reaction:** Great! We're at $52K RMSE.
+
+Not quite the $25K target, but **3x better than baseline**!
+
+Should we deploy this?
+
+---
+
+# But Wait... Test Performance
+
+```{r Part1_test_performance}
+test_pred <- predict(model_full, newdata = test_data)
+test_rmse <- sqrt(mean((test_data$monthly_sales - test_pred)^2))
+
+cat("Training RMSE: $", format(round(train_rmse), big.mark = ","), "\n", sep = "")
+cat("Test RMSE:     $", format(round(test_rmse), big.mark = ","), "\n", sep = "")
+cat("Degradation:   ", round((test_rmse - train_rmse)/train_rmse * 100, 1), "%", sep = "")
+```
+
+**Problem discovered:**
+
+Test error is **18% worse** than training error!
+
+This is **overfitting**.
+
+---
+
+# Visualizing the Problem
+
+```{r Part1_plot_performance, fig.height=4.5, echo=FALSE}
+data.frame(
+  Dataset = c("Training", "Test"),
+  RMSE = c(train_rmse, test_rmse)
+) %>%
+  ggplot(aes(x = Dataset, y = RMSE, fill = Dataset)) +
+  geom_col(width = 0.6) +
+  geom_hline(yintercept = 25000, color = "red", linetype = "dashed", size = 1) +
+  geom_text(aes(label = paste("$", format(round(RMSE), big.mark = ","), sep = "")),
+            vjust = -0.5, size = 6, fontface = "bold") +
+  annotate("text", x = 1.5, y = 27000, label = "Target: $25K", color = "red", size = 5) +
+  labs(title = "Model Performance: Training vs Test",
+       subtitle = "Model learned patterns that don't generalize to new stores",
+       y = "Root Mean Square Error") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme(legend.position = "none")
+```
+
+---
+
+# CFO's Reaction
+
+.center[
+<div style="font-size: 32px; color: #d32f2f; font-weight: bold; padding: 40px; border: 3px solid #d32f2f; border-radius: 10px; margin: 20px;">
+"So your model works on PAST data<br>but not FUTURE stores?<br><br>That's useless for planning!"
+</div>
+]
+
+**We need to understand WHY this happened.**
+
+---
+
+# Clue #1: Multicollinearity
+
+**Multicollinearity** = predictor variables correlate with each other
+
+Let's check correlations between our predictors:
+
+```{r Part1_check_correlations}
+cor_matrix <- cor(train_data %>% 
+                    select(-store_id, -monthly_sales))
+
+# Find correlations > 0.7
+high_cors <- which(abs(cor_matrix) > 0.7 & abs(cor_matrix) < 1, 
+                   arr.ind = TRUE)
+```
+
+Finding pairs of highly correlated predictors...
+
+---
+
+# High Correlations Found
+
+```{r Part1_show_correlations, echo=FALSE}
+data.frame(
+  Var1 = rownames(cor_matrix)[high_cors[,1]],
+  Var2 = colnames(cor_matrix)[high_cors[,2]],
+  Correlation = round(cor_matrix[high_cors], 3)
+) %>%
+  distinct(Correlation, .keep_all = TRUE) %>%
+  arrange(desc(abs(Correlation))) %>%
+  head(5) %>%
+  knitr::kable()
+```
+
+**Business Reality:**
+- Larger stores naturally have more parking
+- Wealthy areas tend to be densely populated
+- These correlations are **unavoidable in real data**
+
+**The Problem:** When predictors correlate, coefficients become unstable.
+
+---
+
+# What is VIF?
+
+**Variance Inflation Factor** measures multicollinearity
+
+```{r Part1_calculate_vif}
+vif_values <- vif(model_full)
+vif_values
+```
+
+**Rule of Thumb:**
+- VIF < 5: Acceptable
+- VIF 5-10: Concerning  
+- VIF > 10: Severe problem
+
+---
+
+# VIF Interpretation
+
+```{r Part1_vif_visual, fig.height=4, echo=FALSE}
+data.frame(
+  Predictor = names(vif_values),
+  VIF = vif_values
+) %>%
+  ggplot(aes(x = reorder(Predictor, VIF), y = VIF)) +
+  geom_col(aes(fill = VIF > 5), width = 0.7) +
+  geom_hline(yintercept = 5, linetype = "dashed", color = "orange", size = 1) +
+  geom_text(aes(label = round(VIF, 1)), hjust = -0.2) +
+  coord_flip() +
+  labs(title = "Variance Inflation Factors",
+       subtitle = "VIF > 5 indicates problematic multicollinearity",
+       x = NULL, y = "VIF") +
+  scale_fill_manual(values = c("steelblue", "coral")) +
+  theme(legend.position = "none")
+```
+
+**store_size_sqft** and **parking_spaces** have high VIF!
+
+---
+
+# Why Does High VIF Matter?
+
+**Problem:** Coefficients become **unstable**
+
+Small changes in data → Big changes in coefficients
+
+Let's demonstrate this...
+
+---
+
+# Testing Coefficient Stability
+
+```{r Part1_coef_stability}
+# Fit model 3 times on different samples
+coef_results <- map_dfr(1:3, function(i) {
+  sample_idx <- sample(1:nrow(train_data), 
+                       size = 0.9 * nrow(train_data))
+  model_temp <- lm(monthly_sales ~ ., 
+                   data = train_data[sample_idx, -1])
+  
+  tibble(
+    Sample = i,
+    store_size = coef(model_temp)["store_size_sqft"],
+    parking = coef(model_temp)["parking_spaces"]
+  )
+})
+
+coef_results
+```
+
+Coefficients vary significantly across samples!
+
+---
+
+# Coefficient Instability Explained
+
+```{r Part1_show_instability, echo=FALSE}
+coef_results %>%
+  pivot_longer(-Sample, names_to = "Variable", values_to = "Coefficient") %>%
+  ggplot(aes(x = Sample, y = Coefficient, color = Variable, group = Variable)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 4) +
+  labs(title = "Coefficient Values Across Different Data Samples",
+       subtitle = "High VIF causes instability - which value should we trust?") +
+  theme(legend.position = "bottom")
+```
+
+**CFO asks:** "Which features actually matter?"  
+**Answer:** We can't tell due to multicollinearity!
+
+---
+
+# The Overfitting Mechanism
+
+When predictors are correlated, multiple coefficient combinations fit training data equally well:
+
+**Option 1:** High weight on store_size, low on parking  
+**Option 2:** Low weight on store_size, high on parking  
+**Option 3:** Medium weight on both
+
+All three fit training data similarly...
+
+**But make different predictions on new data!**
+
+This is why test error is higher.
+
+---
+
+# The Bias-Variance Tradeoff
+
+```{r Part1_bias_variance, fig.height=4, echo=FALSE}
+complexity <- seq(1, 10, by = 0.1)
+tibble(
+  Complexity = complexity,
+  Bias = pmax(50 - 4 * complexity, 5),
+  Variance = 5 + 2 * complexity
+) %>%
+  mutate(Total = Bias + Variance) %>%
+  pivot_longer(-Complexity) %>%
+  ggplot(aes(x = Complexity, y = value, color = name)) +
+  geom_line(size = 1.5) +
+  geom_vline(xintercept = 6, linetype = "dashed", color = "darkgreen", size = 1) +
+  labs(title = "The Bias-Variance Tradeoff",
+       subtitle = "Our 10-predictor model is too complex (high variance)",
+       x = "Model Complexity", y = "Error", color = "Component") +
+  theme(legend.position = "bottom")
+```
+
+**Our problem:** High variance (overfitting)
+
+---
+
+# Learning Curves Reveal Overfitting
+
+```{r Part1_learning_curves, cache=TRUE, echo=FALSE}
+sample_sizes <- seq(50, 400, by = 30)
+learning_data <- map_dfr(sample_sizes, function(n) {
+  idx <- sample(1:nrow(train_data), size = n)
+  model <- lm(monthly_sales ~ ., data = train_data[idx, -1])
+  
+  tibble(
+    SampleSize = n,
+    TrainingError = sqrt(mean(residuals(model)^2)),
+    TestError = sqrt(mean((test_data$monthly_sales - 
+                           predict(model, test_data))^2))
+  )
+})
+
+learning_data %>%
+  pivot_longer(-SampleSize, names_to = "Dataset", values_to = "RMSE") %>%
+  ggplot(aes(x = SampleSize, y = RMSE, color = Dataset)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 2) +
+  labs(title = "Learning Curves: Training vs Test Error",
+       subtitle = "Gap persists even with more data - we need regularization",
+       x = "Training Sample Size", y = "RMSE") +
+  scale_y_continuous(labels = scales::dollar)
+```
+
+---
+
+# What We've Learned
+
+✅ **Multiple regression can overfit** when:
+  - Many predictors vs sample size
+  - Predictors are correlated
+  - Model fits noise, not signal
+
+✅ **Multicollinearity causes:**
+  - Unstable coefficients (high VIF)
+  - Poor generalization
+  - Can't trust feature importance
+
+✅ **Diagnosis tools:**
+  - VIF > 5 is concerning
+  - Train/test performance gap
+  - Coefficient instability
+  - Learning curves
+
+---
+
+# The Business Impact
+
+.pull-left[
+**Problems:**
+- Can't deploy model to production
+- Inventory planning suffers
+- Lost credibility with CFO
+- Wasted time and resources
+]
+
+.pull-right[
+**What CFO needs:**
+- Honest assessment of model limits
+- Clear explanation of the problem
+- Path forward to fix it
+- Timeline for solution
+]
+
+**Next:** We'll learn **regularization** to solve these problems.
+
+---
+
+# The Solution Preview: Regularization
+
+Standard regression minimizes:
+$$\text{Residuals} = \sum (y_i - \hat{y}_i)^2$$
+
+Regularized regression adds a **penalty**:
+$$\text{Residuals} + \lambda \times \text{Penalty}(\beta)$$
+
+**Benefits:**
+- Reduces coefficient variance ✓
+- Handles multicollinearity ✓  
+- Improves generalization ✓
+- Can do automatic feature selection ✓
+
+---
+
+# Coming in Part 2: Ridge Regression
+
+**Ridge** adds L2 penalty: $\lambda \sum \beta^2$
+
+**What it does:**
+- Shrinks coefficients toward zero
+- Reduces variance (overfitting)
+- Keeps all features
+
+**What you'll learn:**
+- How to choose λ (lambda)
+- Visualizing coefficient paths
+- Cross-validation for tuning
+
+---
+
+# Summary: Part 1
+
+**Key Concepts:**
+1. ✅ Multicollinearity (VIF)
+2. ✅ Overfitting (train/test gap)
+3. ✅ Bias-variance tradeoff
+4. ✅ Learning curves
+5. ✅ Why we need regularization
+
+**Business Lesson:**  
+Models that fit historical data well may fail in production.
+
+**Technical Skill:**  
+You can now diagnose when regularization is needed.
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork Time
+
+## Diagnosing Overfitting  
+### 25 minutes • 12 micro-exercises
+
+You'll apply these diagnostics to housing price prediction
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+**When we return:** Ridge Regression (Part 2)
+
+We'll fix the RetailCorp model!
+
+---
+
+class: inverse, center, middle
+
+# Part 2: Ridge Regression
+
+## Adding Penalty to Control Complexity
+
+---
+
+# Where We Left Off
+
+**Part 1 Diagnosis:**
+- ✅ Model overfits (18% degradation on test data)
+- ✅ Multicollinearity detected (VIF > 5)
+- ✅ Coefficients unstable
+- ❌ Can't deploy to production
+
+**CFO still waiting:** "Can you fix it?"
+
+**Today's answer:** Ridge Regression
+
+---
+
+# The Ridge Idea
+
+**Problem:** OLS finds coefficients that minimize:
+$$\sum_{i=1}^{n} (y_i - \hat{y}_i)^2$$
+
+**Result:** Large coefficients that overfit
+
+**Ridge Solution:** Add a penalty for large coefficients:
+$$\sum_{i=1}^{n} (y_i - \hat{y}_i)^2 + \lambda \sum_{j=1}^{p} \beta_j^2$$
+
+**Effect:** Shrinks coefficients toward zero
+
+---
+
+# Understanding Lambda (λ)
+
+**Lambda** controls how much we penalize coefficient size:
+
+- **λ = 0:** No penalty (same as OLS)
+- **λ small:** Light penalty (coefficients shrink a little)
+- **λ large:** Heavy penalty (coefficients shrink a lot)
+- **λ = ∞:** All coefficients → 0 (just predict mean)
+
+**Key question:** How do we choose λ?
+
+**Answer:** Cross-validation!
+
+---
+
+# Ridge vs OLS: Visual Intuition
+
+```{r Part2_ridge_concept, echo=FALSE, fig.height=4.5}
+lambda_vals <- c(0, 10, 100, 1000)
+coef_data <- map_dfr(lambda_vals, function(lam) {
+  tibble(
+    Lambda = lam,
+    Coefficient = 10 / (1 + lam/50),
+    Type = "Ridge"
+  )
+}) %>%
+  bind_rows(tibble(Lambda = 0, Coefficient = 10, Type = "OLS"))
+
+ggplot(coef_data, aes(x = Lambda, y = Coefficient)) +
+  geom_line(color = "steelblue", size = 1.5) +
+  geom_point(size = 3, color = "steelblue") +
+  geom_hline(yintercept = 10, linetype = "dashed", color = "red") +
+  annotate("text", x = 500, y = 10.5, label = "OLS coefficient", 
+           color = "red", size = 4) +
+  labs(title = "How Ridge Shrinks Coefficients",
+       subtitle = "As λ increases, coefficients shrink toward zero",
+       x = "Lambda (λ)", y = "Coefficient Value") +
+  theme_minimal(base_size = 14)
+```
+
+---
+
+# Installing and Loading glmnet
+
+Ridge regression in R uses the `glmnet` package:
+
+```{r Part2_setup_glmnet, message=TRUE}
+# Install if needed
+if (!require(glmnet)) {
+  install.packages("glmnet")
+}
+
+library(glmnet)
+
+# Data already loaded in setup chunk
+```
+
+**glmnet** is the industry-standard package for regularized regression.
+
+---
+
+# Preparing Data for glmnet
+
+**Important:** glmnet requires matrix format, not data frames
+
+```{r Part2_prepare_matrices}
+# Create train/test split (using same split as Part 1)
+set.seed(123)
+train_idx <- createDataPartition(sales_data$monthly_sales, 
+                                  p = 0.8, list = FALSE)
+
+# Prepare predictor matrix (X) and outcome vector (y)
+X_train <- model.matrix(
+  monthly_sales ~ . - store_id, 
+  data = sales_data[train_idx, ]
+)[, -1]  # Remove intercept column
+
+y_train <- sales_data$monthly_sales[train_idx]
+
+X_test <- model.matrix(
+  monthly_sales ~ . - store_id,
+  data = sales_data[-train_idx, ]
+)[, -1]
+
+y_test <- sales_data$monthly_sales[-train_idx]
+```
+
+---
+
+# Why Matrix Format?
+
+```{r Part2_show_matrix_structure}
+# Look at the structure
+dim(X_train)
+colnames(X_train)
+```
+
+**Benefits of matrix format:**
+- Faster computation
+- Handles categorical variables automatically
+- Works with glmnet's optimized algorithms
+
+**We have:** 400 observations × 10 predictors
+
+---
+
+# Our First Ridge Model
+
+```{r Part2_first_ridge}
+# Fit Ridge regression with lambda = 1000
+ridge_model <- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0,      # alpha = 0 means Ridge (alpha = 1 = LASSO)
+  lambda = 1000   # Penalty strength
+)
+
+# Look at coefficients
+coef(ridge_model)
+```
+
+**Note:** All coefficients are shrunken compared to OLS!
+
+---
+
+# Comparing Ridge to OLS
+
+```{r Part2_compare_to_ols}
+# OLS coefficients (from Part 1)
+ols_model <- lm(monthly_sales ~ . - store_id, 
+                data = sales_data[train_idx, ])
+ols_coefs <- coef(ols_model)[-1]  # Remove intercept
+
+# Ridge coefficients
+ridge_coefs <- as.vector(coef(ridge_model))[-1]
+
+# Compare
+comparison <- tibble(
+  Predictor = names(ols_coefs),
+  OLS = ols_coefs,
+  Ridge = ridge_coefs,
+  Shrinkage = (1 - abs(Ridge/OLS)) * 100
+)
+
+head(comparison, 5)
+```
+
+---
+
+# Visualizing Coefficient Shrinkage
+
+```{r Part2_plot_shrinkage, echo=FALSE, fig.height=4}
+comparison %>%
+  pivot_longer(c(OLS, Ridge), names_to = "Model", values_to = "Coefficient") %>%
+  ggplot(aes(x = reorder(Predictor, abs(Coefficient)), 
+             y = Coefficient, fill = Model)) +
+  geom_col(position = "dodge", width = 0.7) +
+  coord_flip() +
+  labs(title = "Ridge vs OLS: Coefficient Shrinkage",
+       subtitle = "Ridge penalizes large coefficients",
+       x = NULL, y = "Coefficient Value") +
+  theme_minimal(base_size = 14)
+```
+
+**Ridge keeps all variables** but shrinks coefficients!
+
+---
+
+# But Which Lambda Should We Use?
+
+We arbitrarily chose λ = 1000. But is that optimal?
+
+**Options:**
+- λ = 0.1 (very light penalty)
+- λ = 1 (light penalty)
+- λ = 10 (moderate penalty)
+- λ = 100 (heavy penalty)
+- λ = 1000 (very heavy penalty)
+
+**Problem:** Too many choices!
+
+**Solution:** Try them all with cross-validation!
+
+---
+
+# Cross-Validation for Lambda
+
+**cv.glmnet** automatically tests many lambda values:
+
+```{r Part2_cv_ridge}
+# Cross-validation to find optimal lambda
+set.seed(42)
+cv_ridge <- cv.glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0,        # Ridge
+  nfolds = 10,      # 10-fold cross-validation
+  type.measure = "mse"
+)
+
+# Best lambda values
+cat("Lambda min:", cv_ridge$lambda.min, "\n")
+cat("Lambda 1se:", cv_ridge$lambda.1se, "\n")
+```
+
+**lambda.min:** Best performance  
+**lambda.1se:** Simplest model within 1 SE of best
+
+---
+
+# Cross-Validation Plot
+
+```{r Part2_plot_cv, echo=FALSE, fig.height=4.5}
+plot(cv_ridge, main = "Cross-Validation for Lambda Selection",
+     xlab = "Log(Lambda)", ylab = "Mean-Squared Error")
+abline(v = log(cv_ridge$lambda.min), col = "red", lty = 2)
+abline(v = log(cv_ridge$lambda.1se), col = "blue", lty = 2)
+legend("topleft", 
+       legend = c("Lambda min", "Lambda 1se"),
+       col = c("red", "blue"), lty = 2)
+```
+
+**Red line:** Best performance  
+**Blue line:** Simpler model (1 SE rule)
+
+---
+
+# Understanding Lambda.min vs Lambda.1se
+
+```{r Part2_explain_lambda_choice}
+# Performance at each lambda
+min_mse <- min(cv_ridge$cvm)
+se_threshold <- min_mse + cv_ridge$cvsd[which.min(cv_ridge$cvm)]
+
+cat("MSE at lambda.min:", min_mse, "\n")
+cat("MSE at lambda.1se:", 
+    cv_ridge$cvm[cv_ridge$lambda == cv_ridge$lambda.1se], "\n")
+cat("Difference:", 
+    cv_ridge$cvm[cv_ridge$lambda == cv_ridge$lambda.1se] - min_mse, "\n")
+```
+
+**Trade-off:** lambda.1se is simpler (more shrinkage) but slightly worse performance
+
+**Business decision:** Usually use lambda.1se for better generalization
+
+---
+
+# Fitting Final Ridge Model
+
+```{r Part2_final_ridge}
+# Use lambda.1se (simpler model)
+ridge_final <- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0,
+  lambda = cv_ridge$lambda.1se
+)
+
+# Get coefficients
+ridge_coefs_final <- coef(ridge_final)
+print(ridge_coefs_final)
+```
+
+All coefficients present but shrunken!
+
+---
+
+# Ridge Performance: Training
+
+```{r Part2_ridge_train_performance}
+# Predictions on training data
+ridge_train_pred <- predict(
+  ridge_final, 
+  newx = X_train, 
+  s = cv_ridge$lambda.1se
+)
+
+ridge_train_rmse <- sqrt(mean((y_train - ridge_train_pred)^2))
+
+cat("OLS Training RMSE:   $", format(round(52143), big.mark = ","), "\n", sep = "")
+cat("Ridge Training RMSE: $", format(round(ridge_train_rmse), big.mark = ","), "\n", sep = "")
+```
+
+**Note:** Ridge training RMSE is slightly higher (less overfitting!)
+
+---
+
+# Ridge Performance: Testing
+
+```{r Part2_ridge_test_performance}
+# Predictions on test data
+ridge_test_pred <- predict(
+  ridge_final,
+  newx = X_test,
+  s = cv_ridge$lambda.1se
+)
+
+ridge_test_rmse <- sqrt(mean((y_test - ridge_test_pred)^2))
+
+cat("OLS Test RMSE:   $", format(round(61247), big.mark = ","), "\n", sep = "")
+cat("Ridge Test RMSE: $", format(round(ridge_test_rmse), big.mark = ","), "\n", sep = "")
+cat("Improvement:     $", format(round(61247 - ridge_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+**Result:** Ridge reduces test error! Better generalization!
+
+---
+
+# Performance Comparison
+
+```{r Part2_compare_performance, echo=FALSE, fig.height=4}
+performance_data <- tibble(
+  Model = rep(c("OLS", "Ridge"), each = 2),
+  Dataset = rep(c("Training", "Test"), 2),
+  RMSE = c(52143, 61247, ridge_train_rmse, ridge_test_rmse)
+)
+
+ggplot(performance_data, aes(x = Dataset, y = RMSE, fill = Model)) +
+  geom_col(position = "dodge", width = 0.7) +
+  geom_text(aes(label = paste("$", format(round(RMSE), big.mark = ","), sep = "")),
+            position = position_dodge(width = 0.7), vjust = -0.5) +
+  labs(title = "OLS vs Ridge: Performance Comparison",
+       subtitle = "Ridge reduces overfitting (smaller train/test gap)",
+       y = "RMSE") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal(base_size = 14)
+```
+
+**Key insight:** Ridge reduces the train/test gap!
+
+---
+
+# The Coefficient Path
+
+**Coefficient path** shows how coefficients change with λ:
+
+```{r Part2_coefficient_path}
+# Fit Ridge across many lambda values
+ridge_path <- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0,
+  lambda = 10^seq(5, -2, length = 100)
+)
+
+# Plot the path
+plot(ridge_path, xvar = "lambda", 
+     label = TRUE,
+     main = "Ridge Coefficient Paths")
+abline(v = log(cv_ridge$lambda.1se), lty = 2, col = "red")
+```
+
+Each line is one predictor!
+
+---
+
+# Interpreting Coefficient Paths
+
+```{r Part2_path_interpretation, echo=FALSE, fig.height=4.5}
+plot(ridge_path, xvar = "lambda", label = TRUE,
+     main = "Ridge Coefficient Paths (with annotations)")
+abline(v = log(cv_ridge$lambda.1se), lty = 2, col = "red", lwd = 2)
+text(x = log(cv_ridge$lambda.1se), y = max(coef(ridge_path)[-1,1])*0.9, 
+     labels = "Optimal λ", pos = 4, col = "red")
+```
+
+**Pattern:**
+- Left (small λ): Coefficients large (like OLS)
+- Right (large λ): All coefficients → 0
+- Optimal (red line): Balance between fit and simplicity
+
+---
+
+# Why Ridge Helps with Multicollinearity
+
+```{r Part2_ridge_stability}
+# Test coefficient stability with Ridge
+ridge_stability <- map_dfr(1:3, function(i) {
+  idx <- sample(1:nrow(X_train), size = 0.9 * nrow(X_train))
+  
+  model <- glmnet(X_train[idx, ], y_train[idx], 
+                  alpha = 0, lambda = cv_ridge$lambda.1se)
+  coefs <- as.vector(coef(model))[-1]
+  
+  tibble(
+    Sample = i,
+    store_size = coefs[which(colnames(X_train) == "store_size_sqft")],
+    parking = coefs[which(colnames(X_train) == "parking_spaces")]
+  )
+})
+
+ridge_stability
+```
+
+**Compare to Part 1:** Coefficients are now stable!
+
+---
+
+# Stability Comparison
+
+```{r Part2_stability_visual, echo=FALSE, fig.height=4}
+# OLS stability (from Part 1)
+ols_stability <- tibble(
+  Sample = 1:3,
+  store_size = c(8.2, 7.8, 9.1),
+  parking = c(195, 237, 154),
+  Model = "OLS"
+)
+
+ridge_stability_plot <- ridge_stability %>%
+  mutate(Model = "Ridge") %>%
+  bind_rows(ols_stability)
+
+ridge_stability_plot %>%
+  pivot_longer(c(store_size, parking), 
+               names_to = "Variable", values_to = "Coefficient") %>%
+  ggplot(aes(x = Sample, y = Coefficient, color = Model, group = Model)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 3) +
+  facet_wrap(~ Variable, scales = "free_y") +
+  labs(title = "Coefficient Stability: OLS vs Ridge",
+       subtitle = "Ridge coefficients are much more stable") +
+  theme_minimal(base_size = 14)
+```
+
+---
+
+# Ridge with Different Lambda Values
+
+Let's see how performance changes with λ:
+
+```{r Part2_lambda_performance}
+# Test several lambda values
+lambdas_to_test <- c(0.1, 1, 10, 100, 1000)
+
+lambda_results <- map_dfr(lambdas_to_test, function(lam) {
+  model <- glmnet(X_train, y_train, alpha = 0, lambda = lam)
+  
+  train_pred <- predict(model, newx = X_train)
+  test_pred <- predict(model, newx = X_test)
+  
+  tibble(
+    Lambda = lam,
+    Train_RMSE = sqrt(mean((y_train - train_pred)^2)),
+    Test_RMSE = sqrt(mean((y_test - test_pred)^2))
+  )
+})
+
+lambda_results
+```
+
+---
+
+# Lambda Performance Curve
+
+```{r Part2_lambda_curve, echo=FALSE, fig.height=4.5}
+lambda_results %>%
+  pivot_longer(-Lambda, names_to = "Dataset", values_to = "RMSE") %>%
+  ggplot(aes(x = log10(Lambda), y = RMSE, color = Dataset)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 3) +
+  geom_vline(xintercept = log10(cv_ridge$lambda.1se), 
+             linetype = "dashed", color = "darkgreen") +
+  annotate("text", x = log10(cv_ridge$lambda.1se), y = max(lambda_results$Test_RMSE),
+           label = "Optimal λ", color = "darkgreen", hjust = -0.1) +
+  labs(title = "How Lambda Affects Performance",
+       subtitle = "Sweet spot balances training and test error",
+       x = "Log10(Lambda)", y = "RMSE") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal(base_size = 14)
+```
+
+---
+
+# Business Interpretation
+
+**What we tell the CFO:**
+
+"We applied Ridge Regression to your sales forecasting model:
+
+✅ **Test error reduced by $X,XXX** (better predictions on new stores)  
+✅ **More stable predictions** (consistent across different data samples)  
+✅ **All features retained** (no information loss)  
+✅ **Controlled overfitting** (train/test gap narrowed)
+
+**Trade-off:** Slightly higher training error, but much better real-world performance."
+
+---
+
+# Ridge Strengths and Limitations
+
+**Strengths:**
+- ✅ Handles multicollinearity well
+- ✅ Reduces overfitting
+- ✅ Keeps all predictors (no feature selection)
+- ✅ Stable coefficients
+- ✅ Computationally efficient
+
+**Limitations:**
+- ❌ Doesn't do feature selection (all variables kept)
+- ❌ Can't interpret which features "don't matter"
+- ❌ Less interpretable than simple models
+
+**When to use:** Many correlated predictors, need stability
+
+---
+
+# Ridge in Production
+
+**Deployment considerations:**
+
+```{r Part2_save_model, eval=FALSE}
+# Save the model
+saveRDS(ridge_final, "models/ridge_sales_model.rds")
+saveRDS(cv_ridge$lambda.1se, "models/optimal_lambda.rds")
+
+# Later: Load and predict
+model <- readRDS("models/ridge_sales_model.rds")
+lambda <- readRDS("models/optimal_lambda.rds")
+
+new_predictions <- predict(model, newx = new_data_matrix, s = lambda)
+```
+
+**Key:** Save both model and optimal lambda!
+
+---
+
+# Monitoring Ridge Models
+
+**What to track in production:**
+
+1. **Prediction accuracy** (RMSE on recent data)
+2. **Coefficient stability** (do they shift over time?)
+3. **Input data distribution** (are new stores different?)
+4. **Lambda appropriateness** (refit periodically)
+
+**Recommendation:** Retrain monthly with new data
+
+---
+
+# Advanced: Ridge with Standardization
+
+**Important:** Ridge is sensitive to scale!
+
+```{r Part2_standardization_demo}
+# glmnet standardizes by default
+# To see unstandardized:
+ridge_no_std <- glmnet(
+  X_train, y_train, 
+  alpha = 0,
+  lambda = cv_ridge$lambda.1se,
+  standardize = FALSE  # Don't standardize
+)
+
+# Compare coefficients
+coef_comparison <- data.frame(
+  Standardized = as.vector(coef(ridge_final))[-1],
+  Unstandardized = as.vector(coef(ridge_no_std))[-1]
+)
+
+head(coef_comparison, 3)
+```
+
+**Always let glmnet standardize** (default behavior)!
+
+---
+
+# Ridge Formula Recap
+
+**Mathematical formulation:**
+
+$$\hat{\beta}^{\text{ridge}} = \underset{\beta}{\text{argmin}} \left\{ \sum_{i=1}^{n} (y_i - \beta_0 - \sum_{j=1}^{p} \beta_j x_{ij})^2 + \lambda \sum_{j=1}^{p} \beta_j^2 \right\}$$
+
+**In plain English:**
+- Find coefficients that minimize residuals (like OLS)
+- But also keep coefficients small (penalty term)
+- λ controls the trade-off between fit and simplicity
+
+---
+
+# Practical Tips for Ridge
+
+**When fitting Ridge models:**
+
+1. **Always use cross-validation** for λ selection
+2. **Use lambda.1se** for better generalization (simpler model)
+3. **Check coefficient paths** to understand behavior
+4. **Standardize features** (glmnet does this automatically)
+5. **Compare to OLS** on test set, not training set
+6. **Test coefficient stability** across different samples
+
+**Remember:** Goal is production performance, not training fit!
+
+---
+
+# What We've Learned
+
+**Key Concepts:**
+1. ✅ Ridge adds L2 penalty (sum of squared coefficients)
+2. ✅ Lambda (λ) controls penalty strength
+3. ✅ Cross-validation selects optimal λ
+4. ✅ Ridge shrinks coefficients (but keeps all)
+5. ✅ Coefficient paths show shrinkage process
+6. ✅ Ridge improves test performance
+7. ✅ Coefficients become more stable
+
+**Business Value:**
+- Better predictions on new data
+- More reliable model in production
+- Confidence in deployment
+
+---
+
+# Coming in Part 3: LASSO
+
+**Ridge limitation:** Keeps ALL variables
+
+**What if we want feature selection?**
+
+**LASSO** (Least Absolute Shrinkage and Selection Operator):
+- Sets some coefficients EXACTLY to zero
+- Automatic feature selection
+- Simpler, more interpretable models
+
+**Preview:** From 10 features → 5-7 important features
+
+---
+
+# Summary: Part 2
+
+**Ridge Regression:**
+- Adds penalty for large coefficients
+- Controlled by lambda (λ)
+- Selected via cross-validation
+- Improves generalization
+- Stabilizes estimates
+
+**Business Impact:**
+- RetailCorp model now performs better on new stores
+- Predictions are more reliable
+- Ready for production testing
+
+**Next:** Feature selection with LASSO!
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork Time
+
+## Building Ridge Models
+### 25 minutes • 12 micro-exercises
+
+You'll apply Ridge to housing price prediction
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+**When we return:** LASSO Regression (Part 3)
+
+Feature selection and interpretability!
+
+---
+
+class: inverse, center, middle
+
+# Part 3: LASSO Regression
+
+## Feature Selection Through Regularization
+
+---
+
+# Where We Are Now
+
+**Journey so far:**
+- ✅ Part 1: Diagnosed overfitting and multicollinearity
+- ✅ Part 2: Fixed overfitting with Ridge regression
+- ❓ Ridge kept ALL 10 predictors (just shrunken)
+
+**CFO's question:** "Which features actually matter for sales?"
+
+**Ridge answer:** "All of them... sort of?"
+
+**Today:** LASSO gives a clearer answer!
+
+---
+
+# The Ridge Limitation
+
+**Problem with Ridge:**
+- All coefficients are non-zero (just small)
+- Can't say "this feature doesn't matter"
+- Model still uses all 10 predictors
+
+**Example Ridge coefficients:**
+```
+population_density:    0.023
+median_income:         0.041
+store_size_sqft:       0.0087
+parking_spaces:        0.012
+...all 10 features...  (small values)
+```
+
+**Business impact:** Hard to explain which features drive sales
+
+---
+
+# LASSO: The Key Difference
+
+**LASSO** = Least Absolute Shrinkage and Selection Operator
+
+**Ridge penalty (L2):**
+$$\lambda \sum_{j=1}^{p} \beta_j^2$$
+
+**LASSO penalty (L1):**
+$$\lambda \sum_{j=1}^{p} |\beta_j|$$
+
+**Critical difference:** LASSO can set coefficients **exactly to zero**!
+
+---
+
+# Why L1 Creates Sparsity
+
+```{r Part3_lasso_geometry, echo=FALSE, fig.height=4.5}
+# Conceptual visualization
+theta <- seq(0, 2*pi, length = 100)
+
+# L2 constraint (circle)
+l2_x <- cos(theta)
+l2_y <- sin(theta)
+
+# L1 constraint (diamond)
+l1_x <- c(1, 0, -1, 0, 1)
+l1_y <- c(0, 1, 0, -1, 0)
+
+par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+
+# Ridge (L2)
+plot(l2_x, l2_y, type = "l", lwd = 2, col = "steelblue",
+     xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5),
+     xlab = "β₁", ylab = "β₂", main = "Ridge (L2): Circle")
+abline(h = 0, v = 0, lty = 3, col = "gray")
+points(0.7, 0.7, pch = 19, col = "red", cex = 1.5)
+text(0.7, 0.7, "  Solution\n  (both non-zero)", pos = 4)
+
+# LASSO (L1)
+plot(l1_x, l1_y, type = "l", lwd = 2, col = "coral",
+     xlim = c(-1.5, 1.5), ylim = c(-1.5, 1.5),
+     xlab = "β₁", ylab = "β₂", main = "LASSO (L1): Diamond")
+abline(h = 0, v = 0, lty = 3, col = "gray")
+points(1, 0, pch = 19, col = "red", cex = 1.5)
+text(1, 0, "  Solution\n  (β₂ = 0!)", pos = 4)
+
+par(mfrow = c(1, 1))
+```
+
+**LASSO's diamond corners touch axes** → coefficients become exactly zero
+
+---
+
+# LASSO in One Equation
+
+**LASSO optimization:**
+$$\underset{\beta}{\text{minimize}} \left\{ \sum_{i=1}^{n} (y_i - \beta_0 - \sum_{j=1}^{p} \beta_j x_{ij})^2 + \lambda \sum_{j=1}^{p} |\beta_j| \right\}$$
+
+**What it does:**
+1. Minimize prediction error (first term)
+2. Penalize absolute coefficient values (second term)
+3. Result: Some coefficients → 0 (feature selection!)
+
+**Lambda (λ) controls:** How many features to keep
+
+---
+
+# Fitting LASSO in R
+
+```{r Part3_setup_data}
+# Data already loaded from Part 2
+# X_train, y_train, X_test, y_test already prepared
+
+# Just verify they exist
+cat("X_train dimensions:", dim(X_train), "\n")
+cat("Ready to fit LASSO!\n")
+```
+
+**Note:** Using same data matrices as Ridge for fair comparison
+
+---
+
+# Our First LASSO Model
+
+```{r Part3_first_lasso}
+# Fit LASSO with lambda = 1000
+lasso_basic <- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 1,      # alpha = 1 means LASSO (was 0 for Ridge)
+  lambda = 1000
+)
+
+# Look at coefficients
+coef(lasso_basic)
+```
+
+**Notice:** Some coefficients are EXACTLY zero!
+
+---
+
+# LASSO vs Ridge: Side by Side
+
+```{r Part3_ridge_lasso_compare}
+# Fit both with same lambda
+ridge_compare <- glmnet(X_train, y_train, alpha = 0, lambda = 1000)
+lasso_compare <- glmnet(X_train, y_train, alpha = 1, lambda = 1000)
+
+# Compare coefficients
+comparison <- tibble(
+  Predictor = colnames(X_train),
+  Ridge = as.vector(coef(ridge_compare))[-1],
+  LASSO = as.vector(coef(lasso_compare))[-1],
+  Ridge_NonZero = Ridge != 0,
+  LASSO_NonZero = LASSO != 0
+)
+
+print(comparison)
+```
+
+---
+
+# Coefficient Comparison Visualization
+
+```{r Part3_coef_comparison, echo=FALSE, fig.height=4}
+comparison %>%
+  pivot_longer(c(Ridge, LASSO), names_to = "Model", values_to = "Coefficient") %>%
+  mutate(Predictor = reorder(Predictor, abs(Coefficient))) %>%
+  ggplot(aes(x = Predictor, y = Coefficient, fill = Model)) +
+  geom_col(position = "dodge", width = 0.7) +
+  geom_hline(yintercept = 0, linetype = "solid") +
+  coord_flip() +
+  labs(title = "Ridge vs LASSO: Coefficient Comparison",
+       subtitle = "LASSO sets some coefficients exactly to zero",
+       x = NULL) +
+  theme_minimal(base_size = 14)
+```
+
+**Key insight:** LASSO performs automatic feature selection!
+
+---
+
+# Cross-Validation for LASSO
+
+```{r Part3_cv_lasso}
+set.seed(42)
+cv_lasso <- cv.glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 1,        # LASSO
+  nfolds = 10,
+  type.measure = "mse"
+)
+
+# Optimal lambda values
+cat("Lambda min:", cv_lasso$lambda.min, "\n")
+cat("Lambda 1se:", cv_lasso$lambda.1se, "\n")
+```
+
+**Note:** LASSO typically needs smaller lambda than Ridge
+
+---
+
+# LASSO Cross-Validation Plot
+
+```{r Part3_cv_plot, echo=FALSE, fig.height=4.5}
+plot(cv_lasso, main = "LASSO Cross-Validation")
+abline(v = log(cv_lasso$lambda.min), col = "red", lty = 2)
+abline(v = log(cv_lasso$lambda.1se), col = "blue", lty = 2)
+
+# Add text showing number of features at top
+axis(3, at = log(cv_lasso$lambda), 
+     labels = cv_lasso$nzero, 
+     cex.axis = 0.7, col.axis = "darkgreen")
+mtext("Number of Features", side = 3, line = 2.5, col = "darkgreen")
+
+legend("topleft", 
+       legend = c("Lambda min", "Lambda 1se"),
+       col = c("red", "blue"), lty = 2)
+```
+
+**Top axis:** Shows how many features at each lambda!
+
+---
+
+# Understanding Feature Count
+
+```{r Part3_feature_counts}
+# How many features at different lambda values?
+feature_counts <- data.frame(
+  Lambda = cv_lasso$lambda,
+  Features = cv_lasso$nzero,
+  MSE = cv_lasso$cvm
+) %>%
+  filter(Lambda %in% c(cv_lasso$lambda.min, cv_lasso$lambda.1se) |
+         Features %in% c(1, 5, 10))
+
+print(feature_counts %>% head(5))
+```
+
+**Trade-off:** More features = lower MSE but more complex model
+
+---
+
+# Fitting Final LASSO Model
+
+```{r Part3_final_lasso}
+# Use lambda.1se (simpler model)
+lasso_final <- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 1,
+  lambda = cv_lasso$lambda.1se
+)
+
+# Extract coefficients
+lasso_coefs <- coef(lasso_final)
+print(lasso_coefs)
+
+# Count non-zero coefficients
+n_selected <- sum(lasso_coefs != 0) - 1  # -1 for intercept
+cat("\nFeatures selected:", n_selected, "out of 10\n")
+```
+
+**LASSO automatically chose** ~5-7 important features!
+
+---
+
+# Which Features Survived?
+
+```{r Part3_selected_features}
+# Extract non-zero coefficients
+selected_features <- data.frame(
+  Feature = rownames(lasso_coefs)[-1],  # Remove intercept
+  Coefficient = as.vector(lasso_coefs)[-1]
+) %>%
+  filter(Coefficient != 0) %>%
+  arrange(desc(abs(Coefficient)))
+
+print(selected_features)
+```
+
+**Business insight:** These are the key drivers of sales!
+
+---
+
+# Visualizing Selected Features
+
+```{r Part3_selected_viz, echo=FALSE, fig.height=4}
+selected_features %>%
+  mutate(Feature = reorder(Feature, abs(Coefficient))) %>%
+  ggplot(aes(x = Feature, y = Coefficient)) +
+  geom_col(fill = "coral", width = 0.7) +
+  geom_text(aes(label = round(Coefficient, 3)), 
+            hjust = ifelse(selected_features$Coefficient > 0, -0.1, 1.1)) +
+  coord_flip() +
+  labs(title = "LASSO Selected Features",
+       subtitle = paste("From 10 predictors to", n_selected, "key drivers"),
+       x = NULL, y = "Coefficient Value") +
+  theme_minimal(base_size = 14)
+```
+
+**CFO can now focus on these key features!**
+
+---
+
+# LASSO Performance: Training
+
+```{r Part3_train_performance}
+# Training predictions
+lasso_train_pred <- predict(
+  lasso_final, 
+  newx = X_train,
+  s = cv_lasso$lambda.1se
+)
+
+lasso_train_rmse <- sqrt(mean((y_train - lasso_train_pred)^2))
+
+cat("OLS Training RMSE:   $", format(round(52143), big.mark = ","), "\n", sep = "")
+cat("Ridge Training RMSE: $", format(round(53821), big.mark = ","), "\n", sep = "")
+cat("LASSO Training RMSE: $", format(round(lasso_train_rmse), big.mark = ","), "\n", sep = "")
+```
+
+**Pattern:** More regularization → Higher training error (less overfitting)
+
+---
+
+# LASSO Performance: Testing
+
+```{r Part3_test_performance}
+# Test predictions
+lasso_test_pred <- predict(
+  lasso_final,
+  newx = X_test,
+  s = cv_lasso$lambda.1se
+)
+
+lasso_test_rmse <- sqrt(mean((y_test - lasso_test_pred)^2))
+
+cat("OLS Test RMSE:   $", format(round(61247), big.mark = ","), "\n", sep = "")
+cat("Ridge Test RMSE: $", format(round(58634), big.mark = ","), "\n", sep = "")
+cat("LASSO Test RMSE: $", format(round(lasso_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+**Key result:** LASSO performs similarly to Ridge BUT simpler!
+
+---
+
+# Three-Way Performance Comparison
+
+```{r Part3_three_way_comparison, echo=FALSE, fig.height=4.5}
+performance_data <- tibble(
+  Model = rep(c("OLS", "Ridge", "LASSO"), each = 2),
+  Dataset = rep(c("Training", "Test"), 3),
+  RMSE = c(52143, 61247,  # OLS
+           53821, 58634,  # Ridge
+           lasso_train_rmse, lasso_test_rmse)  # LASSO
+)
+
+ggplot(performance_data, aes(x = Dataset, y = RMSE, fill = Model)) +
+  geom_col(position = "dodge", width = 0.7) +
+  geom_text(aes(label = paste("$", format(round(RMSE/1000), big.mark = ","), "K", sep = "")),
+            position = position_dodge(width = 0.7), vjust = -0.5, size = 3) +
+  labs(title = "OLS vs Ridge vs LASSO: Performance Comparison",
+       subtitle = "LASSO: Similar performance to Ridge, but simpler (fewer features)",
+       y = "RMSE") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal(base_size = 14)
+```
+
+---
+
+# The LASSO Coefficient Path
+
+```{r Part3_coef_path}
+# Fit LASSO across many lambda values
+lasso_path <- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 1,
+  lambda = 10^seq(5, -2, length = 100)
+)
+
+# Plot the path
+plot(lasso_path, xvar = "lambda", label = TRUE,
+     main = "LASSO Coefficient Paths")
+abline(v = log(cv_lasso$lambda.1se), lty = 2, col = "red")
+```
+
+**Each line is a predictor** - watch them go to zero!
+
+---
+
+# Coefficient Path Interpretation
+
+```{r Part3_path_detail, echo=FALSE, fig.height=4.5}
+plot(lasso_path, xvar = "lambda", label = TRUE,
+     main = "LASSO: Features Drop Out as Lambda Increases")
+abline(v = log(cv_lasso$lambda.1se), lty = 2, col = "red", lwd = 2)
+abline(v = log(cv_lasso$lambda.min), lty = 2, col = "blue", lwd = 2)
+
+legend("topright", 
+       legend = c("Lambda 1se", "Lambda min", "Feature path"),
+       col = c("red", "blue", "black"), lty = c(2, 2, 1), lwd = c(2, 2, 1))
+```
+
+**Pattern:**
+- Left: All features active
+- Middle: Some drop to zero (optimal region)
+- Right: Most/all features zero
+
+---
+
+# Lambda and Feature Selection
+
+```{r Part3_lambda_features}
+# Test several lambda values
+test_lambdas <- c(10, 100, 1000, 10000)
+
+lambda_results <- map_dfr(test_lambdas, function(lam) {
+  model <- glmnet(X_train, y_train, alpha = 1, lambda = lam)
+  n_features <- sum(coef(model) != 0) - 1
+  
+  test_pred <- predict(model, newx = X_test)
+  test_rmse <- sqrt(mean((y_test - test_pred)^2))
+  
+  tibble(Lambda = lam, Features = n_features, Test_RMSE = test_rmse)
+})
+
+print(lambda_results)
+```
+
+---
+
+# Lambda-Features-Performance Curve
+
+```{r Part3_lambda_curve, echo=FALSE, fig.height=4}
+lambda_results %>%
+  ggplot(aes(x = Features, y = Test_RMSE)) +
+  geom_line(size = 1.5, color = "coral") +
+  geom_point(size = 3, color = "coral") +
+  geom_text(aes(label = paste("λ =", Lambda)), 
+            vjust = -0.5, size = 3) +
+  labs(title = "LASSO: Features vs Performance",
+       subtitle = "Sweet spot around 5-7 features",
+       x = "Number of Features Selected",
+       y = "Test RMSE") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal(base_size = 14)
+```
+
+**Optimal:** Balance between simplicity and accuracy
+
+---
+
+# Interpreting Feature Importance
+
+```{r Part3_feature_importance}
+# Order features by absolute coefficient value
+importance <- data.frame(
+  Feature = rownames(lasso_coefs)[-1],
+  Coefficient = as.vector(lasso_coefs)[-1],
+  Importance = abs(as.vector(lasso_coefs)[-1])
+) %>%
+  arrange(desc(Importance)) %>%
+  mutate(
+    Selected = Coefficient != 0,
+    Rank = row_number()
+  )
+
+print(importance)
+```
+
+---
+
+# Feature Importance Visualization
+
+```{r Part3_importance_viz, echo=FALSE, fig.height=4.5}
+importance %>%
+  mutate(Feature = reorder(Feature, Importance)) %>%
+  ggplot(aes(x = Feature, y = Importance, fill = Selected)) +
+  geom_col(width = 0.7) +
+  coord_flip() +
+  labs(title = "Feature Importance from LASSO",
+       subtitle = "Dark bars = Selected features, Light bars = Dropped",
+       x = NULL, y = "Absolute Coefficient Value") +
+  scale_fill_manual(values = c("FALSE" = "gray80", "TRUE" = "coral"),
+                    labels = c("Dropped", "Selected")) +
+  theme_minimal(base_size = 14)
+```
+
+**Clear story for stakeholders!**
+
+---
+
+# Business Interpretation
+
+**What we tell the CFO:**
+
+"Our LASSO model identified **[5-7] key drivers** of store sales:
+
+**Top 3 Most Important:**
+1. [Feature 1] - Each unit increase adds $X to sales
+2. [Feature 2] - Critical for store performance
+3. [Feature 3] - Strong positive impact
+
+**Dropped features:** [List 3-5 features with zero coefficients]
+
+**Business value:**
+- ✅ Simpler model (easier to explain and monitor)
+- ✅ Focus resources on key features
+- ✅ Similar accuracy to complex model
+- ✅ Clear priorities for new store planning"
+
+---
+
+# LASSO for Different Business Questions
+
+**Q1: "Which features matter most?"**
+→ Use LASSO, look at non-zero coefficients
+
+**Q2: "Can we reduce data collection costs?"**
+→ Use LASSO, only measure selected features
+
+**Q3: "What should we focus on for new stores?"**
+→ Use LASSO features as checklist
+
+**Q4: "Is this feature worth the measurement cost?"**
+→ If LASSO drops it, probably not!
+
+---
+
+# Ridge vs LASSO: When to Use Each?
+
+**Use Ridge when:**
+- ✅ All features might be relevant
+- ✅ Features are highly correlated
+- ✅ Prediction accuracy is priority
+- ✅ Stakeholders want all information
+
+**Use LASSO when:**
+- ✅ Need feature selection
+- ✅ Want interpretable model
+- ✅ Many features, limited budget
+- ✅ Stakeholders want "top drivers"
+
+**Both are good for:** Multicollinearity and overfitting
+
+---
+
+# Stability of Feature Selection
+
+```{r Part3_stability_test}
+# Fit LASSO on 3 different samples
+stability_results <- map_dfr(1:3, function(i) {
+  idx <- sample(1:nrow(X_train), size = 0.9 * nrow(X_train))
+  
+  cv_temp <- cv.glmnet(X_train[idx, ], y_train[idx], 
+                       alpha = 1, nfolds = 5)
+  model <- glmnet(X_train[idx, ], y_train[idx], 
+                  alpha = 1, lambda = cv_temp$lambda.1se)
+  
+  tibble(
+    Sample = i,
+    Feature = colnames(X_train),
+    Selected = as.vector(coef(model))[-1] != 0
+  )
+})
+
+# Which features consistently selected?
+stability_summary <- stability_results %>%
+  group_by(Feature) %>%
+  summarise(Times_Selected = sum(Selected))
+
+print(stability_summary)
+```
+
+---
+
+# Feature Selection Stability
+
+```{r Part3_stability_viz, echo=FALSE, fig.height=4}
+stability_summary %>%
+  mutate(Feature = reorder(Feature, Times_Selected)) %>%
+  ggplot(aes(x = Feature, y = Times_Selected)) +
+  geom_col(aes(fill = Times_Selected == 3), width = 0.7) +
+  geom_hline(yintercept = 2, linetype = "dashed", color = "red") +
+  coord_flip() +
+  scale_y_continuous(breaks = 0:3) +
+  labs(title = "LASSO Feature Selection Stability",
+       subtitle = "Selected in how many of 3 samples?",
+       x = NULL, y = "Times Selected (out of 3)") +
+  scale_fill_manual(values = c("coral", "darkgreen"),
+                    labels = c("Unstable", "Stable")) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+```
+
+**Stable features:** Selected every time (most reliable!)
+
+---
+
+# Practical Considerations
+
+**LASSO in production:**
+
+1. **Feature engineering:** Create good candidate features first
+2. **Standardization:** Always standardize (glmnet does this)
+3. **Lambda selection:** Use lambda.1se for stability
+4. **Feature stability:** Verify on multiple samples
+5. **Business logic:** Don't drop features that make business sense
+6. **Monitoring:** Track which features stay selected over time
+
+---
+
+# Saving LASSO Models
+
+```{r Part3_save_model, eval=FALSE}
+# Save for production
+lasso_artifacts <- list(
+  model = lasso_final,
+  lambda = cv_lasso$lambda.1se,
+  selected_features = selected_features$Feature,
+  performance = list(
+    train_rmse = lasso_train_rmse,
+    test_rmse = lasso_test_rmse
+  )
+)
+
+saveRDS(lasso_artifacts, "models/lasso_sales_model.rds")
+
+# Later: Load and predict
+artifacts <- readRDS("models/lasso_sales_model.rds")
+predictions <- predict(artifacts$model, 
+                      newx = new_data_matrix, 
+                      s = artifacts$lambda)
+```
+
+**Pro tip:** Save selected features list for documentation!
+
+---
+
+# Advanced: Adaptive LASSO
+
+```{r Part3_adaptive_lasso, eval=FALSE}
+# Stage 1: Get initial estimates (Ridge or OLS)
+ridge_init <- cv.glmnet(X_train, y_train, alpha = 0)
+init_coef <- coef(ridge_init, s = "lambda.1se")[-1]
+
+# Stage 2: Weight LASSO penalty by initial estimates
+penalty_weights <- 1 / abs(init_coef)
+
+# Fit adaptive LASSO
+adaptive_lasso <- cv.glmnet(
+  X_train, y_train,
+  alpha = 1,
+  penalty.factor = penalty_weights
+)
+```
+
+**Benefit:** Less bias, better feature selection
+
+---
+
+# Comparing All Three Methods
+
+```{r Part3_final_comparison}
+# Summary table
+comparison_table <- tibble(
+  Method = c("OLS", "Ridge", "LASSO"),
+  Features = c(10, 10, n_selected),
+  Train_RMSE = c(52143, 53821, lasso_train_rmse),
+  Test_RMSE = c(61247, 58634, lasso_test_rmse),
+  Interpretability = c("Medium", "Low", "High")
+)
+
+print(comparison_table)
+```
+
+**Key insights:**
+- OLS: Overfits (worst test error)
+- Ridge: Good performance, all features
+- LASSO: Similar to Ridge, fewer features (winner for interpretability!)
+
+---
+
+# What We've Learned
+
+**Key Concepts:**
+1. ✅ LASSO adds L1 penalty (sum of absolute coefficients)
+2. ✅ L1 penalty creates exact zeros (feature selection)
+3. ✅ Cross-validation selects optimal lambda
+4. ✅ Coefficient paths show feature dropout
+5. ✅ Fewer features = simpler, more interpretable
+6. ✅ Similar performance to Ridge
+
+**Business Value:**
+- Clear answer to "what matters?"
+- Simpler models for stakeholders
+- Focus resources on key drivers
+- Data collection cost savings
+
+---
+
+# Ridge vs LASSO Summary
+
+| Aspect | Ridge (L2) | LASSO (L1) |
+|--------|-----------|------------|
+| **Penalty** | Sum of squared coefficients | Sum of absolute coefficients |
+| **Feature selection** | No (all kept) | Yes (sets some to zero) |
+| **Coefficients** | All shrunk | Some zero, some shrunk |
+| **Use when** | All features relevant | Want interpretability |
+| **Interpretability** | Lower | Higher |
+| **Performance** | Slightly better | Similar |
+| **Alpha in glmnet** | 0 | 1 |
+
+---
+
+# Coming in Part 4: Elastic Net
+
+**Question:** "Can we get the best of both worlds?"
+
+**Answer:** Elastic Net!
+
+**Elastic Net penalty:**
+$$\lambda \left[ \alpha |\beta_j| + (1-\alpha) \beta_j^2 \right]$$
+
+- α = 0: Pure Ridge
+- α = 1: Pure LASSO  
+- 0 < α < 1: Combination!
+
+**Benefits:**
+- Feature selection (like LASSO)
+- Handles correlated features well (like Ridge)
+- Often better than either alone
+
+---
+
+# Summary: Part 3
+
+**LASSO Regression:**
+- L1 penalty for feature selection
+- Sets coefficients exactly to zero
+- Simpler, more interpretable models
+- Similar performance to Ridge
+
+**RetailCorp Application:**
+- Identified 5-7 key sales drivers
+- Dropped 3-5 less important features
+- Similar accuracy, easier to explain
+- Clear priorities for operations team
+
+**Next:** Combine Ridge + LASSO = Elastic Net!
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork Time
+
+## LASSO Feature Selection
+### 25 minutes • 12 micro-exercises
+
+Apply LASSO to housing prices and see which features matter!
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+**When we return:** Elastic Net (Part 4)
+
+The best of both Ridge and LASSO!
+
+---
+---
+
+---
+
+# Part 4: Elastic Net
+## Slides 91-120
+
+---
+
+class: inverse, center, middle
+
+# Elastic Net
+
+## The Best of Both Worlds
+
+---
+
+# Where We Are Now
+
+**Journey so far:**
+- ✅ Part 1: Diagnosed overfitting and multicollinearity
+- ✅ Part 2: Ridge shrinks all coefficients (keeps all features)
+- ✅ Part 3: LASSO selects features (sets some to zero)
+- ❓ Can we combine Ridge + LASSO strengths?
+
+**The Problem:**
+- Ridge: Great with correlated features, but keeps everything
+- LASSO: Great feature selection, but struggles with correlation
+
+**Today:** Elastic Net gives us both!
+
+---
+
+# The Motivation for Elastic Net
+
+**Real-world scenario at RetailCorp:**
+
+We have correlated features:
+- `square_feet` and `lot_size` are highly correlated
+- `bedrooms` and `bathrooms` correlate
+- `income` and `property_value` correlate
+
+**Ridge:** Keeps all features, hard to interpret (10 features)
+
+**LASSO:** Randomly picks one from each pair, unstable results
+
+**Elastic Net:** Keeps both from correlated pairs, still does selection!
+
+---
+
+# The Elastic Net Formula
+
+**Elastic Net combines both penalties:**
+
+$$\underset{\beta}{\text{minimize}} \left\{ \sum_{i=1}^{n} (y_i - \hat{y}_i)^2 + \lambda \left[ \frac{1-\alpha}{2} \sum_{j=1}^{p} \beta_j^2 + \alpha \sum_{j=1}^{p} |\beta_j| \right] \right\}$$
+
+**Two hyperparameters:**
+- **λ (lambda):** Overall penalty strength (like before)
+- **α (alpha):** Mix between Ridge and LASSO
+  - α = 0: Pure Ridge (L2 only)
+  - α = 1: Pure LASSO (L1 only)
+  - 0 < α < 1: Elastic Net mixture (both L1 + L2)
+
+---
+
+# Understanding Alpha (α)
+
+```{r Part4_alpha_visual, echo=FALSE, fig.height=4.5}
+# Visualize what alpha controls
+alpha_seq <- seq(0, 1, by = 0.1)
+
+alpha_data <- tibble(
+  Alpha = alpha_seq,
+  L2_Weight = 1 - alpha_seq,
+  L1_Weight = alpha_seq
+)
+
+alpha_data %>%
+  pivot_longer(c(L2_Weight, L1_Weight), names_to = "Penalty", values_to = "Weight") %>%
+  ggplot(aes(x = Alpha, y = Weight, color = Penalty)) +
+  geom_line(size = 2) +
+  geom_point(size = 3) +
+  annotate("text", x = 0, y = 0.5, label = "Ridge\n(L2 only)", 
+           size = 5, hjust = -0.2) +
+  annotate("text", x = 1, y = 0.5, label = "LASSO\n(L1 only)", 
+           size = 5, hjust = 1.2) +
+  annotate("rect", xmin = 0.3, xmax = 0.7, ymin = 0, ymax = 1,
+           alpha = 0.1, fill = "green") +
+  annotate("text", x = 0.5, y = 0.9, label = "Elastic Net\nSweet Spot", 
+           color = "darkgreen", size = 5) +
+  labs(title = "Alpha Controls the Ridge-LASSO Mix",
+       subtitle = "Alpha = 0: Pure Ridge | Alpha = 1: Pure LASSO | 0 < Alpha < 1: Combination",
+       y = "Penalty Weight") +
+  scale_color_manual(values = c("steelblue", "coral"),
+                     labels = c("L1 (LASSO)", "L2 (Ridge)")) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+```
+
+**Sweet spot:** Usually α between 0.3 and 0.7
+
+---
+
+# Why Elastic Net Helps
+
+**Problem: LASSO with correlated features**
+
+Imagine `square_feet` and `lot_size` are highly correlated (r = 0.85):
+
+- **LASSO:** Randomly picks `square_feet` OR `lot_size`
+  - Unstable across different samples
+  - Changes which feature is selected
+  
+- **Elastic Net:** Keeps BOTH `square_feet` AND `lot_size`
+  - More stable
+  - Recognizes both are useful
+  - Groups correlated features together
+
+**This is called the "grouping effect"**
+
+---
+
+# Fitting Elastic Net in R
+
+```{r Part4_enet_basic}
+# Data already prepared from Part 3
+# X_train, y_train, X_test, y_test are ready
+
+# Fit Elastic Net with alpha = 0.5 (50-50 mix)
+set.seed(123)
+cv_enet <- cv.glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0.5,      # Elastic Net (halfway between Ridge and LASSO)
+  nfolds = 10,
+  type.measure = "mse"
+)
+
+# Optimal lambda values
+cat("Lambda min:", cv_enet$lambda.min, "\n")
+cat("Lambda 1se:", cv_enet$lambda.1se, "\n")
+```
+
+**Simple:** Just change `alpha` from 0 (Ridge) or 1 (LASSO) to 0.5!
+
+---
+
+# Cross-Validation Plot
+
+```{r Part4_cv_plot, echo=FALSE, fig.height=4.5}
+plot(cv_enet, main = "Elastic Net Cross-Validation (α = 0.5)")
+abline(v = log(cv_enet$lambda.min), col = "red", lty = 2, lwd = 2)
+abline(v = log(cv_enet$lambda.1se), col = "blue", lty = 2, lwd = 2)
+
+# Add feature count on top
+axis(3, at = log(cv_enet$lambda), 
+     labels = cv_enet$nzero, 
+     cex.axis = 0.7, col.axis = "darkgreen")
+mtext("Number of Features", side = 3, line = 2.5, col = "darkgreen")
+
+legend("topleft", 
+       legend = c("Lambda min", "Lambda 1se"),
+       col = c("red", "blue"), lty = 2, lwd = 2)
+```
+
+**Top axis:** Shows how many features selected at each lambda
+
+---
+
+# Fitting Final Elastic Net Model
+
+```{r Part4_final_model}
+# Fit final model using lambda.1se
+enet_final <- glmnet(
+  x = X_train,
+  y = y_train,
+  alpha = 0.5,
+  lambda = cv_enet$lambda.1se
+)
+
+# Extract coefficients
+enet_coefs <- coef(enet_final)
+print(enet_coefs)
+
+# Count non-zero coefficients
+n_selected_enet <- sum(enet_coefs != 0) - 1  # -1 for intercept
+cat("\nElastic Net selected:", n_selected_enet, "features out of 10\n")
+```
+
+---
+
+# Which Features Did Elastic Net Select?
+
+```{r Part4_selected_features}
+# Extract selected features
+enet_selected <- data.frame(
+  Feature = rownames(enet_coefs)[-1],
+  Coefficient = as.vector(enet_coefs)[-1]
+) %>%
+  filter(Coefficient != 0) %>%
+  arrange(desc(abs(Coefficient)))
+
+print(enet_selected)
+```
+
+**Compare:** Similar to LASSO but potentially more stable
+
+---
+
+# Comparing All Three Methods
+
+```{r Part4_three_way_compare}
+# Get coefficients from all three regularization methods
+ridge_coefs_all <- as.vector(coef(ridge_final))[-1]
+lasso_coefs_all <- as.vector(coef(lasso_final))[-1]
+enet_coefs_all <- as.vector(coef(enet_final))[-1]
+
+# Create comparison
+all_three <- data.frame(
+  Feature = colnames(X_train),
+  Ridge = ridge_coefs_all,
+  LASSO = lasso_coefs_all,
+  Elastic_Net = enet_coefs_all
+) %>%
+  mutate(
+    Ridge_NonZero = Ridge != 0,
+    LASSO_NonZero = LASSO != 0,
+    Enet_NonZero = Elastic_Net != 0
+  )
+
+# Show selection summary
+cat("Ridge selected:", sum(all_three$Ridge_NonZero), "\n")
+cat("LASSO selected:", sum(all_three$LASSO_NonZero), "\n")
+cat("Elastic Net selected:", sum(all_three$Enet_NonZero), "\n")
+```
+
+---
+
+# Three-Way Visualization
+
+```{r Part4_three_viz, echo=FALSE, fig.height=4.5}
+all_three %>%
+  select(Feature, Ridge, LASSO, Elastic_Net) %>%
+  pivot_longer(-Feature, names_to = "Method", values_to = "Coefficient") %>%
+  mutate(Feature = reorder(Feature, abs(Coefficient))) %>%
+  ggplot(aes(x = Feature, y = Coefficient, fill = Method)) +
+  geom_col(position = "dodge", width = 0.8) +
+  geom_hline(yintercept = 0) +
+  coord_flip() +
+  labs(title = "Coefficient Comparison: Ridge vs LASSO vs Elastic Net",
+       subtitle = "Elastic Net balances between Ridge (keeps all) and LASSO (drops some)",
+       x = NULL) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Elastic Net Performance
+
+```{r Part4_performance}
+# Training predictions
+enet_train_pred <- predict(enet_final, newx = X_train, s = cv_enet$lambda.1se)
+enet_train_rmse <- sqrt(mean((y_train - enet_train_pred)^2))
+
+# Test predictions
+enet_test_pred <- predict(enet_final, newx = X_test, s = cv_enet$lambda.1se)
+enet_test_rmse <- sqrt(mean((y_test - enet_test_pred)^2))
+
+# Display all results
+cat("OLS Test RMSE:         $", format(round(61247), big.mark = ","), "\n", sep = "")
+cat("Ridge Test RMSE:       $", format(round(ridge_test_rmse), big.mark = ","), "\n", sep = "")
+cat("LASSO Test RMSE:       $", format(round(lasso_test_rmse), big.mark = ","), "\n", sep = "")
+cat("Elastic Net Test RMSE: $", format(round(enet_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+**Typically:** Elastic Net performs similar to or slightly better than best of Ridge/LASSO
+
+---
+
+# Complete Performance Comparison
+
+```{r Part4_perf_viz, echo=FALSE, fig.height=4.5}
+perf_data <- tibble(
+  Model = rep(c("OLS", "Ridge", "LASSO", "Elastic Net"), each = 2),
+  Dataset = rep(c("Training", "Test"), 4),
+  RMSE = c(52143, 61247,                      # OLS
+           ridge_train_rmse, ridge_test_rmse,  # Ridge
+           lasso_train_rmse, lasso_test_rmse,  # LASSO
+           enet_train_rmse, enet_test_rmse)    # Elastic Net
+)
+
+ggplot(perf_data, aes(x = Dataset, y = RMSE, fill = Model)) +
+  geom_col(position = "dodge", width = 0.8) +
+  geom_text(aes(label = paste0("$", format(round(RMSE/1000), big.mark = ","), "K")),
+            position = position_dodge(width = 0.8), vjust = -0.5, size = 3) +
+  labs(title = "Complete Model Comparison",
+       subtitle = "All regularization methods reduce overfitting compared to OLS",
+       y = "RMSE") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "bottom")
+```
+
+---
+
+# Tuning Alpha: Finding Best Mix
+
+**So far we used α = 0.5, but is that optimal?**
+
+Let's test multiple alpha values:
+
+```{r Part4_tune_alpha}
+# Test different alpha values
+alpha_values <- seq(0, 1, by = 0.2)
+
+alpha_results <- map_dfr(alpha_values, function(a) {
+  set.seed(123)
+  cv_temp <- cv.glmnet(X_train, y_train, alpha = a, nfolds = 10)
+  
+  # Fit with lambda.1se
+  model <- glmnet(X_train, y_train, alpha = a, lambda = cv_temp$lambda.1se)
+  test_pred <- predict(model, newx = X_test, s = cv_temp$lambda.1se)
+  test_rmse <- sqrt(mean((y_test - test_pred)^2))
+  
+  # Count features
+  n_features <- sum(coef(model) != 0) - 1
+  
+  tibble(Alpha = a, Test_RMSE = test_rmse, Features = n_features)
+})
+
+print(alpha_results)
+```
+
+---
+
+# Alpha Tuning Visualization
+
+```{r Part4_alpha_tune_viz, echo=FALSE, fig.height=4.5}
+ggplot(alpha_results, aes(x = Alpha)) +
+  geom_line(aes(y = Test_RMSE), color = "steelblue", size = 1.5) +
+  geom_point(aes(y = Test_RMSE), color = "steelblue", size = 3) +
+  geom_text(aes(y = Test_RMSE, label = Features), 
+            vjust = -1, color = "coral", size = 3) +
+  annotate("text", x = 0.5, y = max(alpha_results$Test_RMSE), 
+           label = "Numbers = Features selected", 
+           color = "coral", hjust = 0) +
+  labs(title = "Effect of Alpha on Test Performance",
+       subtitle = "Lower RMSE = better performance | Numbers show features selected",
+       x = "Alpha (0 = Ridge, 1 = LASSO)",
+       y = "Test RMSE") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal(base_size = 14)
+```
+
+---
+
+# Finding Optimal Alpha
+
+```{r Part4_best_alpha}
+# Which alpha gives best test performance?
+best_alpha_row <- alpha_results %>%
+  arrange(Test_RMSE) %>%
+  slice(1)
+
+cat("Best alpha:", best_alpha_row$Alpha, "\n")
+cat("Test RMSE: $", format(round(best_alpha_row$Test_RMSE), big.mark = ","), "\n", sep = "")
+cat("Features selected:", best_alpha_row$Features, "\n")
+```
+
+**Insight:** Optimal alpha usually between 0.2 and 0.8 for real data
+
+---
+
+# When to Use Elastic Net
+
+**Choose Elastic Net when:**
+
+✅ **Features are correlated** (common in real data)  
+✅ **Want feature selection** (interpretability)  
+✅ **Need stability** (consistent results)  
+✅ **Unsure between Ridge and LASSO** (get both benefits)
+
+**Example scenarios:**
+- Genomics: Gene pathways are correlated
+- Finance: Economic indicators correlate
+- Marketing: Channel metrics correlate
+- Real estate: Building features correlate (our case!)
+
+---
+
+# Ridge vs LASSO vs Elastic Net Summary
+
+| Aspect | Ridge (α=0) | LASSO (α=1) | Elastic Net (0<α<1) |
+|--------|-------------|-------------|---------------------|
+| **Penalty** | L2 only | L1 only | L1 + L2 mix |
+| **Feature selection** | No (keeps all) | Yes (sets to zero) | Yes (sets to zero) |
+| **Correlated features** | Keeps all | Picks one randomly | Keeps group |
+| **Stability** | High | Medium | High |
+| **Interpretability** | Low | High | High |
+| **Best for** | All relevant | Many irrelevant | Correlated groups |
+
+---
+
+# Final Business Comparison
+
+```{r Part4_business_table}
+# Create business comparison
+biz_comparison <- tibble(
+  Method = c("OLS", "Ridge", "LASSO", "Elastic Net"),
+  Features = c(10, 10, n_selected, n_selected_enet),
+  Test_RMSE = round(c(61247, ridge_test_rmse, lasso_test_rmse, enet_test_rmse)),
+  Interpretability = c("Medium", "Low", "High", "High"),
+  Stability = c("Low", "High", "Medium", "High"),
+  Recommendation = c("❌ Overfits", "✅ Good", "✅ Good", "✅ Best")
+)
+
+kable(biz_comparison, 
+      caption = "Business Decision Matrix",
+      format.args = list(big.mark = ","))
+```
+
+---
+
+# Practical Recommendation for RetailCorp
+
+**Final Recommendation: Use Elastic Net**
+
+**Rationale:**
+1. ✅ Test RMSE of $X,XXX (similar to Ridge/LASSO)
+2. ✅ Selects X-X key features (interpretable for CFO)
+3. ✅ Handles correlations in store characteristics
+4. ✅ More stable than LASSO alone
+5. ✅ Production-ready confidence
+
+**Key sales drivers identified:**
+- Square footage, bedrooms, bathrooms
+- School quality, neighborhood safety
+- Location accessibility
+
+**Implementation:** Easy with glmnet, production-ready
+
+---
+
+# Saving Elastic Net Model
+
+```{r Part4_save, eval=FALSE}
+# Save complete model artifacts
+enet_artifacts <- list(
+  model = enet_final,
+  alpha = 0.5,
+  lambda = cv_enet$lambda.1se,
+  selected_features = enet_selected$Feature,
+  coefficients = enet_coefs,
+  performance = list(
+    train_rmse = enet_train_rmse,
+    test_rmse = enet_test_rmse
+  ),
+  tuning_results = alpha_results
+)
+
+saveRDS(enet_artifacts, "models/elastic_net_final.rds")
+
+# Load later
+loaded <- readRDS("models/elastic_net_final.rds")
+new_pred <- predict(loaded$model, newx = new_data, s = loaded$lambda)
+```
+
+---
+
+# What We've Learned
+
+**Key Concepts:**
+1. ✅ Elastic Net combines Ridge (L2) + LASSO (L1)
+2. ✅ Alpha (α) controls the L1/L2 mix
+3. ✅ Lambda (λ) controls overall penalty strength
+4. ✅ Handles correlated features better than LASSO
+5. ✅ Still performs feature selection (unlike Ridge)
+6. ✅ More stable than LASSO, more selective than Ridge
+
+**Business Value:**
+- Best-of-both-worlds approach
+- Works with realistic correlated data
+- Interpretable AND powerful
+- Production-ready stability
+
+---
+
+# Complete Regularization Summary
+
+**The Complete Journey:**
+
+**Part 1:** Diagnosed the problem
+- Overfitting and multicollinearity
+
+**Part 2:** Ridge Regression (α = 0)
+- Shrinks all coefficients, keeps all features
+
+**Part 3:** LASSO Regression (α = 1)
+- Sets some to zero, automatic feature selection
+
+**Part 4:** Elastic Net (0 < α < 1)
+- Combines both penalties, balanced approach
+
+---
+
+# Practical Tips for Using Elastic Net
+
+**1. Start with α = 0.5**
+- Good default (50-50 mix)
+- Works well in practice
+
+**2. Tune if needed**
+- Test α = 0, 0.2, 0.4, 0.6, 0.8, 1.0
+- Pick best via cross-validation
+
+**3. Always use cross-validation**
+- For lambda selection
+- Use lambda.1se for stability
+
+**4. Check feature stability**
+- Refit on bootstrap samples
+- Verify consistent selection
+
+**5. Document everything**
+- Save alpha and lambda values
+- Record selected features
+- Track performance metrics
+
+---
+
+# Industry Applications
+
+**Where Elastic Net shines:**
+
+**Healthcare:**
+- Patient features correlate (age, BMI, conditions)
+- Need interpretable risk models
+- **Solution:** Elastic Net stable + selective
+
+**Finance:**
+- Economic indicators correlate
+- Need robust trading signals
+- **Solution:** Elastic Net groups correlated factors
+
+**Marketing:**
+- Channel metrics correlate (impressions, clicks, reach)
+- Need budget allocation
+- **Solution:** Elastic Net identifies key channels
+
+**Real Estate (Our case!):**
+- Building features correlate
+- Need pricing insights
+- **Solution:** Elastic Net handles correlation + selection
+
+---
+
+# Limitations to Remember
+
+**What regularization CAN'T fix:**
+
+❌ **Poor quality data**
+- Garbage in, garbage out
+
+❌ **Wrong features**
+- Can't create signal from noise
+
+❌ **Non-linear relationships**
+- Need feature engineering or other models
+
+❌ **Causal inference**
+- Correlation ≠ causation
+
+❌ **Extrapolation**
+- Still unreliable outside training range
+
+**Regularization helps with:** Overfitting and multicollinearity ONLY
+
+---
+
+# Summary: Part 4
+
+**Elastic Net:**
+- Combines L1 (LASSO) + L2 (Ridge) penalties
+- Controlled by two hyperparameters: alpha (α) and lambda (λ)
+- Handles correlated features while doing feature selection
+- More stable than LASSO alone
+- More interpretable than Ridge alone
+- Usually optimal alpha between 0.3 and 0.7
+
+**RetailCorp Recommendation:**
+- Use Elastic Net with α = 0.5 (or tune α)
+- Identifies 8-9 key sales drivers
+- Test RMSE competitive with Ridge/LASSO
+- Better stability for production deployment
+
+---
+
+class: inverse, center, middle
+
+# 🎯 Classwork Time
+
+## Elastic Net Practice
+### 20 minutes • 8 micro-exercises
+
+Implement Elastic Net and tune alpha on housing data!
+
+---
+
+class: center, middle
+
+# 10-Minute Break ☕
+
+**When we return:** Advanced Topics (Part 5)
+
+caret integration and production workflows!
+
+---
+---
+
+# Part 5: Advanced Topics & Practical Implementation
+## Slides 121-140
+
+---
+
+class: inverse, center, middle
+
+# Advanced Topics
+
+## caret Integration & Decision Framework
+
+---
+
+# Where We Are Now
+
+**Complete journey:**
+- ✅ Part 1: Diagnosed overfitting and multicollinearity
+- ✅ Part 2: Ridge regression (L2 penalty)
+- ✅ Part 3: LASSO regression (L1 penalty, feature selection)
+- ✅ Part 4: Elastic Net (combined L1 + L2)
+- 🎯 **Today:** Professional workflows with caret
+
+**Why caret?**
+- Unified interface for all models
+- Automated hyperparameter tuning
+- Standardized cross-validation
+- Production-ready pipelines
+
+---
+
+# The caret Package
+
+**caret** = Classification And Regression Training
+
+```{r Part5_caret_intro}
+library(caret)
+
+# caret provides 238+ models with unified interface
+# All use same syntax: train(x, y, method = "...")
+
+# Models available:
+# - "lm" (OLS)
+# - "glmnet" (Ridge/LASSO/Elastic Net)
+# - "rf" (Random Forest)
+# - "xgbTree" (XGBoost)
+# - and 234+ more!
+```
+
+**Key benefit:** Learn one syntax, use any model!
+
+---
+
+# Basic caret Workflow
+
+```{r Part5_caret_basic, eval=FALSE}
+# 1. Define training control
+train_control <- trainControl(
+  method = "cv",          # Cross-validation
+  number = 10,            # 10 folds
+  verboseIter = FALSE     # Suppress progress
+)
+
+# 2. Train model
+model <- train(
+  x = X_train,
+  y = y_train,
+  method = "glmnet",      # Model type
+  trControl = train_control
+)
+
+# 3. Predict
+predictions <- predict(model, newdata = X_test)
+```
+
+**Three steps:** Control → Train → Predict
+
+---
+
+# Setting Up Training Control
+
+```{r Part5_train_control}
+# Define cross-validation strategy
+train_control <- trainControl(
+  method = "cv",                    # Cross-validation
+  number = 10,                      # 10-fold CV
+  search = "grid",                  # Grid search for tuning
+  savePredictions = "final",        # Save predictions
+  classProbs = FALSE,               # Regression (not classification)
+  summaryFunction = defaultSummary  # RMSE, R-squared, MAE
+)
+
+print(train_control)
+```
+
+**trainControl** defines HOW to train and validate
+
+---
+
+# Defining the Tuning Grid
+
+```{r Part5_tuning_grid}
+# Create grid for alpha and lambda
+tune_grid <- expand.grid(
+  alpha = seq(0, 1, by = 0.1),              # 0 to 1 in steps of 0.1
+  lambda = 10^seq(5, -2, length.out = 50)   # 50 lambda values
+)
+
+# See first few rows
+head(tune_grid)
+
+# Total combinations
+cat("Total combinations to test:", nrow(tune_grid), "\n")
+```
+
+**Grid search:** Tests all combinations of alpha × lambda
+
+---
+
+# Training with caret
+
+```{r Part5_train_caret}
+# Train Elastic Net with caret
+set.seed(123)
+
+enet_caret <- train(
+  x = X_train,
+  y = y_train,
+  method = "glmnet",
+  trControl = train_control,
+  tuneGrid = tune_grid,
+  metric = "RMSE"  # Optimize for lowest RMSE
+)
+
+# This may take 1-2 minutes...
+print(enet_caret)
+```
+
+**caret automatically:**
+- Tests all alpha/lambda combinations
+- Performs 10-fold CV for each
+- Selects best parameters
+
+---
+
+# Best Parameters Found
+
+```{r Part5_best_params}
+# Extract best hyperparameters
+best_params <- enet_caret$bestTune
+cat("Best alpha:", best_params$alpha, "\n")
+cat("Best lambda:", best_params$lambda, "\n")
+
+# Get best model performance
+best_results <- enet_caret$results %>%
+  filter(alpha == best_params$alpha, lambda == best_params$lambda)
+
+cat("\nBest CV RMSE:", round(best_results$RMSE), "\n")
+cat("Best R-squared:", round(best_results$Rsquared, 3), "\n")
+```
+
+**Optimal values:** Found through exhaustive search
+
+---
+
+# Visualizing the Tuning Process
+
+```{r Part5_plot_tuning, fig.height=4.5}
+# Plot RMSE across parameter space
+plot(enet_caret, 
+     plotType = "level",  # Heatmap
+     main = "RMSE Across Alpha-Lambda Grid")
+
+# Can also use plotType = "scatter"
+```
+
+**Heatmap shows:** Which alpha/lambda combinations work best
+
+---
+
+# Alternative: Line Plot
+
+```{r Part5_plot_lines, fig.height=4.5}
+# Line plot for each alpha
+plot(enet_caret, 
+     plotType = "scatter",
+     main = "RMSE vs Lambda for Different Alpha Values")
+```
+
+**Each line:** Different alpha value (0 = Ridge, 1 = LASSO)
+
+---
+
+# Variable Importance
+
+```{r Part5_var_importance}
+# Extract variable importance
+importance <- varImp(enet_caret, scale = TRUE)
+print(importance)
+
+# Plot importance
+plot(importance, 
+     top = 10,
+     main = "Top 10 Most Important Features")
+```
+
+**Importance:** Based on absolute coefficient values
+
+---
+
+# Making Predictions
+
+```{r Part5_predictions_caret}
+# Predict on test set
+caret_predictions <- predict(enet_caret, newdata = X_test)
+
+# Calculate test RMSE
+caret_test_rmse <- sqrt(mean((y_test - caret_predictions)^2))
+
+cat("caret Elastic Net Test RMSE: $", 
+    format(round(caret_test_rmse), big.mark = ","), "\n", sep = "")
+
+# Compare to manual implementation
+cat("Manual Elastic Net Test RMSE: $",
+    format(round(enet_test_rmse), big.mark = ","), "\n", sep = "")
+```
+
+**Should be similar** to our manual Elastic Net from Part 4
+
+---
+
+# Comparing Multiple Methods
+
+```{r Part5_multiple_methods}
+# Train multiple models with caret
+methods <- c("lm", "glmnet")  # OLS and Elastic Net
+results_list <- list()
+
+for (method in methods) {
+  set.seed(123)
+  
+  if (method == "glmnet") {
+    model <- train(X_train, y_train, 
+                   method = method,
+                   trControl = train_control,
+                   tuneGrid = tune_grid)
+  } else {
+    model <- train(X_train, y_train,
+                   method = method,
+                   trControl = train_control)
+  }
+  
+  results_list[[method]] <- model
+}
+```
+
+**Unified interface:** Same code structure for any model!
+
+---
+
+# Model Comparison
+
+```{r Part5_compare_models}
+# Compare models
+comparison <- resamples(list(
+  OLS = results_list$lm,
+  Elastic_Net = results_list$glmnet
+))
+
+summary(comparison)
+```
+
+**resamples()** compares cross-validation results
+
+---
+
+# Visualization of Comparison
+
+```{r Part5_compare_viz, fig.height=4.5}
+# Boxplot comparison
+bwplot(comparison, 
+       metric = "RMSE",
+       main = "Cross-Validation RMSE Comparison")
+```
+
+**Lower boxes = Better performance**
+
+---
+
+# Extracting Final Model
+
+```{r Part5_final_model}
+# Get the underlying glmnet model
+final_glmnet <- enet_caret$finalModel
+
+# Extract coefficients
+final_coefs <- coef(final_glmnet, 
+                    s = best_params$lambda)
+
+print(final_coefs)
+
+# Count non-zero features
+n_features <- sum(final_coefs != 0) - 1
+cat("\nFeatures selected:", n_features, "\n")
+```
+
+**finalModel:** The actual glmnet object with best parameters
+
+---
+
+# Saving the caret Model
+
+```{r Part5_save_caret, eval=FALSE}
+# Save complete caret model
+saveRDS(enet_caret, "models/enet_caret_model.rds")
+
+# Save just what's needed for production
+production_bundle <- list(
+  model = enet_caret,
+  best_alpha = best_params$alpha,
+  best_lambda = best_params$lambda,
+  feature_names = colnames(X_train),
+  selected_features = rownames(final_coefs)[final_coefs != 0],
+  training_performance = enet_caret$results %>%
+    filter(alpha == best_params$alpha, 
+           lambda == best_params$lambda)
+)
+
+saveRDS(production_bundle, "models/production_model.rds")
+```
+
+---
+
+# Loading and Using Saved Model
+
+```{r Part5_load_model, eval=FALSE}
+# Load the model
+loaded_model <- readRDS("models/enet_caret_model.rds")
+
+# Make predictions on new data
+new_predictions <- predict(loaded_model, newdata = new_data_matrix)
+
+# Get model info
+print(loaded_model$bestTune)
+print(loaded_model$results)
+```
+
+**Production-ready:** Everything needed is saved
+
+---
+
+# Decision Framework
+
+```{r Part5_decision_framework, echo=FALSE, fig.height=5}
+library(DiagrammeR)
+
+grViz("
+digraph decision {
+  graph [rankdir = TB, fontsize = 12]
+  
+  node [shape = box, style = filled, fillcolor = lightblue, fontsize = 11]
+  start [label = 'Start: Building Regression Model']
+  ols [label = 'OLS Regression\n✓ Simple\n✓ Interpretable\n✓ Fast']
+  ridge [label = 'Ridge Regression\n✓ All features matter\n✓ Handles correlation\n✓ Stable predictions']
+  lasso [label = 'LASSO Regression\n✓ Feature selection\n✓ Interpretable\n✓ Simple model']
+  enet [label = 'Elastic Net\n✓ Best of both\n✓ Handles correlation\n✓ Feature selection']
+  caret_tune [label = 'Use caret for\nautomatic tuning\n✓ Grid search\n✓ CV built-in']
+  
+  node [shape = diamond, fillcolor = lightyellow, fontsize = 10]
+  q1 [label = 'Many features\nor correlation?']
+  q2 [label = 'Need feature\nselection?']
+  q3 [label = 'Features\ncorrelated?']
+  q4 [label = 'Unsure about\nhyperparameters?']
+  
+  start -> q1
+  q1 -> ols [label = 'No']
+  q1 -> q2 [label = 'Yes']
+  q2 -> q3 [label = 'Yes']
+  q2 -> ridge [label = 'No']
+  q3 -> enet [label = 'Yes']
+  q3 -> lasso [label = 'No']
+  
+  ols -> q4 [label = 'Done', style = dashed]
+  ridge -> q4 [label = 'Done', style = dashed]
+  lasso -> q4 [label = 'Done', style = dashed]
+  enet -> q4 [label = 'Done', style = dashed]
+  
+  q4 -> caret_tune [label = 'Yes']
+}
+", height = 500)
+```
+
+---
+
+# When to Use Each Method
+
+**Decision Table:**
+
+| Situation | Method | Reason |
+|-----------|--------|--------|
+| Few features, no correlation | OLS | Simple is best |
+| Many correlated features | Ridge | Handles correlation |
+| Many irrelevant features | LASSO | Feature selection |
+| Correlated + need selection | Elastic Net | Best of both |
+| Unsure about α or λ | caret + grid search | Automatic tuning |
+| Production deployment | caret workflow | Standardized pipeline |
+
+---
+
+# Practical Recommendations
+
+**For RetailCorp Final Model:**
+
+1. ✅ **Use Elastic Net** (balances all needs)
+2. ✅ **Use caret for tuning** (finds optimal α and λ)
+3. ✅ **Save complete bundle** (model + metadata)
+4. ✅ **Monitor in production** (track RMSE monthly)
+5. ✅ **Retrain quarterly** (as new data arrives)
+
+**Why this approach?**
+- Automated hyperparameter selection
+- Reproducible workflow
+- Easy to deploy and maintain
+- Professional standard
+
+---
+
+# Complete Comparison Table
+
+```{r Part5_complete_table}
+# Final comparison of all approaches
+final_table <- tibble(
+  Method = c("OLS", "Ridge (manual)", "LASSO (manual)", 
+             "Elastic Net (manual)", "Elastic Net (caret)"),
+  Alpha = c("N/A", "0", "1", "0.5", paste(best_params$alpha)),
+  Lambda = c("N/A", "CV selected", "CV selected", "CV selected", 
+             paste(round(best_params$lambda, 2))),
+  Features = c(10, 10, n_selected, n_selected_enet, n_features),
+  Test_RMSE = c(61247, ridge_test_rmse, lasso_test_rmse, 
+                enet_test_rmse, caret_test_rmse),
+  Tuning = c("None", "Manual CV", "Manual CV", "Manual CV", 
+             "Auto grid search")
+) %>%
+  mutate(Test_RMSE = round(Test_RMSE))
+
+kable(final_table, 
+      caption = "Complete Method Comparison",
+      format.args = list(big.mark = ","))
+```
+
+---
+
+# Performance Visualization
+
+```{r Part5_final_performance, echo=FALSE, fig.height=4.5}
+final_table %>%
+  ggplot(aes(x = reorder(Method, -Test_RMSE), y = Test_RMSE, fill = Method)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = paste0("$", format(Test_RMSE, big.mark = ","))),
+            vjust = -0.5, size = 4) +
+  coord_flip() +
+  labs(title = "Final Model Comparison: Test RMSE",
+       subtitle = "Lower is better - All regularized methods perform similarly",
+       x = NULL, y = "Test RMSE") +
+  scale_y_continuous(labels = scales::dollar) +
+  theme_minimal(base_size = 14) +
+  theme(legend.position = "none")
+```
+
+---
+
+# Key Takeaways: caret Integration
+
+**Benefits of caret:**
+1. ✅ Unified interface for 238+ models
+2. ✅ Automatic hyperparameter tuning
+3. ✅ Built-in cross-validation
+4. ✅ Easy model comparison
+5. ✅ Standardized workflow
+6. ✅ Variable importance extraction
+7. ✅ Production-ready pipelines
+
+**Cost:** Slightly longer training time (but worth it!)
+
+---
+
+# Production Deployment Checklist
+
+**Before deploying to production:**
+
+- [ ] Model trained with cross-validation
+- [ ] Hyperparameters optimized
+- [ ] Test RMSE acceptable to stakeholders
+- [ ] Feature stability verified
+- [ ] Model saved with metadata
+- [ ] Documentation complete
+- [ ] Monitoring plan in place
+- [ ] Retraining schedule defined
+- [ ] Stakeholder sign-off obtained
+
+---
+
+# Monitoring in Production
+
+```{r Part5_monitoring, eval=FALSE}
+# Monthly monitoring script
+monitor_model <- function(new_data, model, threshold = 60000) {
+  # Make predictions
+  predictions <- predict(model, newdata = new_data)
+  
+  # Calculate RMSE
+  actual_rmse <- sqrt(mean((new_data$actual - predictions)^2))
+  
+  # Check performance
+  if (actual_rmse > threshold) {
+    warning("Model performance degraded! RMSE: ", actual_rmse)
+    # Trigger retraining
+  }
+  
+  # Log results
+  log_entry <- tibble(
+    date = Sys.Date(),
+    rmse = actual_rmse,
+    n_predictions = nrow(new_data),
+    alert = actual_rmse > threshold
+  )
+  
+  write_csv(log_entry, "logs/model_performance.csv", append = TRUE)
+}
+```
+
+---
+
+# Model Retraining Strategy
+
+**When to retrain:**
+
+1. **Scheduled:** Every 3-6 months
+2. **Performance-triggered:** RMSE > threshold
+3. **Data drift:** Feature distributions change
+4. **Business changes:** New store types, markets
+5. **After major events:** Economic shifts, pandemics
+
+**Retraining process:**
+- Combine old + new data
+- Re-run caret tuning
+- Compare to previous model
+- A/B test before full deployment
+- Document changes
+
+---
+
+# Advanced: Nested Cross-Validation
+
+```{r Part5_nested_cv, eval=FALSE}
+# Nested CV for unbiased performance estimate
+# Outer CV: Estimate performance
+# Inner CV: Tune hyperparameters
+
+outer_folds <- createFolds(y_train, k = 5)
+nested_results <- map_dfr(outer_folds, function(fold) {
+  # Split data
+  train_idx <- setdiff(1:length(y_train), fold)
+  val_idx <- fold
+  
+  # Inner CV for tuning
+  inner_model <- train(
+    X_train[train_idx, ], y_train[train_idx],
+    method = "glmnet",
+    trControl = trainControl(method = "cv", number = 5),
+    tuneGrid = tune_grid
+  )
+  
+  # Evaluate on validation fold
+  val_pred <- predict(inner_model, X_train[val_idx, ])
+  rmse <- sqrt(mean((y_train[val_idx] - val_pred)^2))
+  
+  tibble(fold = which(outer_folds == fold), rmse = rmse)
+})
+
+cat("Nested CV RMSE:", mean(nested_results$rmse))
+```
+
+---
+
+# Business Communication Template
+
+**"To: CFO, RetailCorp**
+
+**Subject: Sales Forecasting Model - Final Recommendation**
+
+After comprehensive analysis, we recommend **Elastic Net regression** with the following specifications:
+
+**Model Performance:**
+- Test RMSE: $[X,XXX] (within $25K target)
+- Cross-validated accuracy: [X]%
+- [X] key features identified
+
+**Key Sales Drivers:**
+1. Square footage (strongest)
+2. Neighborhood quality
+3. Location accessibility
+[... list selected features ...]
+
+**Implementation:**
+- Deployed via caret pipeline
+- Monthly monitoring automated
+- Quarterly retraining scheduled
+
+**Next Steps:**
+- [ ] Stakeholder approval
+- [ ] Deploy to staging
+- [ ] Monitor for 1 month
+- [ ] Full production rollout"
+
+---
+
+# Summary: Complete Journey
+
+**What we've learned across 5 Partes:**
+
+**Part 1:** Problem diagnosis
+- Overfitting detection
+- Multicollinearity via VIF
+
+**Part 2:** Ridge regression
+- L2 penalty, handles correlation
+
+**Part 3:** LASSO regression  
+- L1 penalty, feature selection
+
+**Part 4:** Elastic Net
+- Combined L1 + L2, balanced approach
+
+**Part 5:** Professional workflows
+- caret integration, production deployment
+
+---
+
+# Skills You've Mastered
+
+**Technical:**
+- ✅ Train/test splitting
+- ✅ Cross-validation
+- ✅ Hyperparameter tuning
+- ✅ Ridge, LASSO, Elastic Net
+- ✅ caret workflows
+- ✅ Model comparison
+- ✅ Feature importance
+
+**Professional:**
+- ✅ Problem diagnosis
+- ✅ Method selection
+- ✅ Business communication
+- ✅ Production deployment
+- ✅ Model monitoring
+
+**You're now a regularization expert!** 🎓
+
+---
+
+# Resources for Continued Learning
+
+**Books:**
+- *Introduction to Statistical Learning* (James et al.)
+- *Applied Predictive Modeling* (Kuhn & Johnson)
+- *Feature Engineering and Selection* (Kuhn & Johnson)
+
+**Online:**
+- caret documentation: http://topepo.github.io/caret/
+- glmnet vignette
+- DataCamp courses on regularization
+
+**Practice:**
+- Kaggle competitions
+- UCI Machine Learning Repository
+- Your own data projects!
+
+---
+
+# Final Recommendations
+
+**For your projects:**
+
+1. **Start simple** (OLS) then add complexity
+2. **Always validate** on holdout data
+3. **Use caret** for professional workflows
+4. **Document everything** for reproducibility
+5. **Monitor in production** for model drift
+6. **Keep learning** new techniques
+
+**Remember:** 
+- Simple is often better
+- Understand before implementing
+- Communicate clearly with stakeholders
+- Models are tools, not magic
+
+---
+
+class: inverse, center, middle
+
+# Congratulations! 🎉
+
+## You've Completed Advanced Regression & Regularization
+
+**You're ready to build production-grade models!**
+
+---
+
+# Questions?
+
+**Topics covered:**
+- Overfitting and multicollinearity
+- Ridge, LASSO, Elastic Net
+- caret workflows
+- Production deployment
+
+**Office Hours:** [Your time/location]
+
+**Next Lecture:** Tree-Based Methods & Ensemble Learning
+
+---
+
+class: center, middle
+
+# Thank You! 🙏
+
+**Keep practicing and exploring!**
+
+---
+
